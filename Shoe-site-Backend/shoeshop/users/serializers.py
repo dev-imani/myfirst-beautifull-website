@@ -129,3 +129,52 @@ class UserProfileSerializer(UserSerializer):
             "first_name",
             "last_name"
         )
+class CustomUserUpdateSerializer(UserSerializer):
+    """
+    Serializer for updating non-sensitive user information.
+    Excludes role modifications and sensitive data changes.
+
+    Fields:
+    - Basic profile information only
+    - Phone number
+
+    Usage:
+        Use this serializer specifically for update operations on user profiles.
+        Example:
+        ```
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "phone_number": "+1234567890"
+        }
+        ```
+    """
+    phone_number = PhoneNumberField()
+
+    class Meta(UserSerializer.Meta):
+        model = User
+        fields = (
+            "first_name",
+            "last_name",
+            "phone_number",
+        )
+        read_only_fields = (
+            "id",
+            "username",
+            "email",
+            "sex",
+            "is_store_owner",
+            "is_store_manager",
+            "is_inventory_manager",
+            "is_sales_associate",
+            "is_customer_service",
+            "is_cashier"
+        )
+
+    def update(self, instance, validated_data):
+        # Only update allowed fields
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+        instance.save()
+        return instance

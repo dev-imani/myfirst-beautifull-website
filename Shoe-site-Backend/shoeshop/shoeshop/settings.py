@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'djoser',
     'phonenumber_field',
+    'drf_yasg',
+    'debug_toolbar',
 
     # Local apps
     'users',
@@ -55,6 +57,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    #Added
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
 # Custom user model
 AUTH_USER_MODEL = 'users.CustomUser'
@@ -161,6 +165,7 @@ DJOSER = {
         "user_create": "users.serializers.CustomUserCreateSerializer",
         "user": "users.serializers.CustomUserSerializer",
         'current_user': 'users.serializers.CustomUserSerializer',
+        'user_update': 'users.serializers.CustomUserUpdateSerializer'
     },
-}
+}   
         
