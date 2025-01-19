@@ -8,11 +8,11 @@ from rest_framework import permissions
 # Create a schema view for Swagger and ReDoc documentation
 schema_view = get_schema_view(
     openapi.Info(
-        title="DAIRY MANAGEMENT SYSTEM API",
+        title="SOLELY: Shoe Store & Marketplace API",
         default_version="v1",
-        description="API for managing dairy-related information",
+        description="API for managing shoe store operations and enabling marketplace functionality, including user management, product catalog, orders, and more.",
         terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="agricodehub@gmail.com"),
+        contact=openapi.Contact(email="mamesareagan0@gmail.com"),
         license=openapi.License(
             name="Apache License V2.0",
             url="https://www.apache.org/licenses/LICENSE-2.0",

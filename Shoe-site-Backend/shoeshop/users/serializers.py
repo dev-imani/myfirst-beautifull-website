@@ -24,13 +24,7 @@ class CustomUserCreateSerializer(UserCreateSerializer):
             "first_name": "John",
             "last_name": "Doe",
             "phone_number": "+1234567890",
-            "sex": "MALE",
-            "is_store_owner": false,
-            "is_store_manager": true,
-            "is_inventory_manager": false,
-            "is_sales_associate": false,
-            "is_customer_service": false,
-            "is_cashier": false
+            "sex": "MALE"
         }
         ```
     """
@@ -46,15 +40,15 @@ class CustomUserCreateSerializer(UserCreateSerializer):
             "first_name",
             "last_name",
             "phone_number",
-            "sex",
-            "is_store_owner",
-            "is_store_manager",
-            "is_inventory_manager",
-            "is_sales_associate",
-            "is_customer_service",
-            "is_cashier"
+            "sex"
         )
 
+    def create(self, validated_data):
+        user = super().create(validated_data)
+        # Clear all roles after user creation
+        user._clear_all_roles()
+        user.save()
+        return user
 class CustomUserSerializer(UserSerializer):
     """
     Custom serializer for retrieving and updating user instances.
