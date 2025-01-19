@@ -467,3 +467,91 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
         return Response(response_data, status=status.HTTP_200_OK)
     
+
+    @action(detail=False, methods=["post"])
+    def assign_customer_service(self, request):
+        """
+        Assign customer service roles to selected users.
+        
+        Request body:
+            user_ids: List of user IDs to assign store owner role
+            
+        Returns:
+            Response with success/error messages and appropriate HTTP status code
+        """
+
+        # Get and validate user IDs
+        user_ids = request.data.getlist("user_ids", [])
+        if not user_ids:
+            return Response(
+                {"error": "No user IDs provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user_id = request.user.id
+        assigned_users = []
+        not_found_ids = []
+        invalid_ids = []
+        response_data = {}
+
+        # Process each user ID
+        for user_id in user_ids:
+            try:
+                user_id_int = int(user_id)
+                
+                # Prevent self-assignment
+                if user_id_int == current_user_id:
+                    return Response(
+                        {"error": "Cannot assign customer service role to yourself."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                user = CustomUser.objects.get(id=user_id_int)
+                
+                # Check if user is already a store owner
+                if user.is_customer_service():
+                    return Response(
+                        {"error": f"User {user.username} is already a sales associate."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Assign store owner role
+                user.assign_customer_service()
+                assigned_users.append(user.username)
+                
+            except ValueError:
+                invalid_ids.append(user_id)
+            except CustomUser.DoesNotExist:
+                if user_id.isdigit():
+                    not_found_ids.append(user_id)
+                else:
+                    invalid_ids.append(user_id)
+
+        # Build response messages
+        if assigned_users:
+            response_data["message"] = (
+                f"Users {', '.join(assigned_users)} have been assigned as customer service."
+                if len(assigned_users) > 1
+                else f"User {assigned_users[0]} has been assigned as an customer service."
+            )
+
+        if not_found_ids:
+            response_data["not_found"] = (
+                f"Users with IDs {', '.join(not_found_ids)} were not found."
+                if len(not_found_ids) > 1
+                else f"User with ID {not_found_ids[0]} was not found."
+            )
+
+        if invalid_ids:
+            response_data["invalid"] = (
+                f"Invalid IDs: {', '.join(invalid_ids)}."
+                if len(invalid_ids) > 1
+                else f"Invalid ID: {invalid_ids[0]}."
+            )
+
+        # Return 400 if no users were assigned and there were errors
+        if not assigned_users and (not_found_ids or invalid_ids):
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
