@@ -86,14 +86,14 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             "assign_assistant_store_manager",
         ]:
             permission_classes = [IsStoreOwner]
-        elif self.action == "assign_store_worker":
-            permission_classes = [IsStoreManager | IsStoreOwner]
-        elif self.action == "assign_team_leader":
-            permission_classes = [IsStoreManager | IsStoreOwner | IsAssistantstoreManager]
+        elif self.action == "assign_inventory_manager":
+            permission_classes = [IsStoreManager]
+        elif self.action == "assign_sales_associate":
+            permission_classes = [IsStoreManager]
         elif self.action in ["dismiss_store_manager", "dismiss_assistant_store_manager"]:
             permission_classes = [IsStoreOwner]
         elif self.action == "dismiss_team_leader":
-            permission_classes = [IsStoreManager | IsStoreOwner | IsAssistantstoreManager]
+            permission_classes = [IsStoreManager | IsStoreOwner]
         else:
             permission_classes = [IsStoreManager | IsStoreOwner]
 
@@ -291,3 +291,179 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(response_data, status=status.HTTP_200_OK)
+        
+    @action(detail=False, methods=["post"])
+    def assign_inventory_manager(self, request):
+        """
+        Assign inventory manager roles to selected users.
+        
+        Request body:
+            user_ids: List of user IDs to assign store owner role
+            
+        Returns:
+            Response with success/error messages and appropriate HTTP status code
+        """
+
+        # Get and validate user IDs
+        user_ids = request.data.getlist("user_ids", [])
+        if not user_ids:
+            return Response(
+                {"error": "No user IDs provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user_id = request.user.id
+        assigned_users = []
+        not_found_ids = []
+        invalid_ids = []
+        response_data = {}
+
+        # Process each user ID
+        for user_id in user_ids:
+            try:
+                user_id_int = int(user_id)
+                
+                # Prevent self-assignment for non-first users
+                if user_id_int == current_user_id:
+                    return Response(
+                        {"error": "Cannot assign inventory manager role to yourself."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                user = CustomUser.objects.get(id=user_id_int)
+                
+                # Check if user is already a store owner
+                if user.is_inventory_manager:
+                    return Response(
+                        {"error": f"User {user.username} is already ainventory manager."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Assign store owner role
+                user.assign_inventory_manager()
+                assigned_users.append(user.username)
+                
+            except ValueError:
+                invalid_ids.append(user_id)
+            except CustomUser.DoesNotExist:
+                if user_id.isdigit():
+                    not_found_ids.append(user_id)
+                else:
+                    invalid_ids.append(user_id)
+
+        # Build response messages
+        if assigned_users:
+            response_data["message"] = (
+                f"Users {', '.join(assigned_users)} have been assigned as inventory managers."
+                if len(assigned_users) > 1
+                else f"User {assigned_users[0]} has been assigned as an inventory manager."
+            )
+
+        if not_found_ids:
+            response_data["not_found"] = (
+                f"Users with IDs {', '.join(not_found_ids)} were not found."
+                if len(not_found_ids) > 1
+                else f"User with ID {not_found_ids[0]} was not found."
+            )
+
+        if invalid_ids:
+            response_data["invalid"] = (
+                f"Invalid IDs: {', '.join(invalid_ids)}."
+                if len(invalid_ids) > 1
+                else f"Invalid ID: {invalid_ids[0]}."
+            )
+
+        # Return 400 if no users were assigned and there were errors
+        if not assigned_users and (not_found_ids or invalid_ids):
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+    @action(detail=False, methods=["post"])
+    def assign_sales_associate(self, request):
+        """
+        Assign sales associate roles to selected users.
+        
+        Request body:
+            user_ids: List of user IDs to assign store owner role
+            
+        Returns:
+            Response with success/error messages and appropriate HTTP status code
+        """
+
+        # Get and validate user IDs
+        user_ids = request.data.getlist("user_ids", [])
+        if not user_ids:
+            return Response(
+                {"error": "No user IDs provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user_id = request.user.id
+        assigned_users = []
+        not_found_ids = []
+        invalid_ids = []
+        response_data = {}
+
+        # Process each user ID
+        for user_id in user_ids:
+            try:
+                user_id_int = int(user_id)
+                
+                # Prevent self-assignment for non-first users
+                if user_id_int == current_user_id:
+                    return Response(
+                        {"error": "Cannot assign Sales associate role to yourself."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                user = CustomUser.objects.get(id=user_id_int)
+                
+                # Check if user is already a store owner
+                if user.is_sales_associate():
+                    return Response(
+                        {"error": f"User {user.username} is already a sales associate."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Assign store owner role
+                user.assign_sales_associate()
+                assigned_users.append(user.username)
+                
+            except ValueError:
+                invalid_ids.append(user_id)
+            except CustomUser.DoesNotExist:
+                if user_id.isdigit():
+                    not_found_ids.append(user_id)
+                else:
+                    invalid_ids.append(user_id)
+
+        # Build response messages
+        if assigned_users:
+            response_data["message"] = (
+                f"Users {', '.join(assigned_users)} have been assigned as sales associates."
+                if len(assigned_users) > 1
+                else f"User {assigned_users[0]} has been assigned as an sales associate."
+            )
+
+        if not_found_ids:
+            response_data["not_found"] = (
+                f"Users with IDs {', '.join(not_found_ids)} were not found."
+                if len(not_found_ids) > 1
+                else f"User with ID {not_found_ids[0]} was not found."
+            )
+
+        if invalid_ids:
+            response_data["invalid"] = (
+                f"Invalid IDs: {', '.join(invalid_ids)}."
+                if len(invalid_ids) > 1
+                else f"Invalid ID: {invalid_ids[0]}."
+            )
+
+        # Return 400 if no users were assigned and there were errors
+        if not assigned_users and (not_found_ids or invalid_ids):
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
