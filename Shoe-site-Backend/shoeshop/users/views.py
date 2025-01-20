@@ -1,8 +1,9 @@
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, pagination
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from users.models import CustomUser
+from users.choices import UserRoles
+from users.models import CustomUser, StoreOwner
 from users.permissions import (
     IsStoreOwner,
     IsStoreManager,
@@ -36,6 +37,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
     Serializer class used for request/response data depends on the action:
     - CustomUserCreateSerializer for the 'create' action.
+    - CustomUserUpdateSerializer for the 'update' action.
     - CustomUserSerializer for other actions.
     """
 
@@ -83,51 +85,274 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         elif self.action in [
             "assign_store_owner",
             "assign_store_manager",
-            "assign_assistant_store_manager",
+            "dismiss_role"
         ]:
             permission_classes = [IsStoreOwner]
-        elif self.action == "assign_inventory_manager":
+        elif self.action in ["assign_inventory_manager", "get_staff_members"]:
             permission_classes = [IsStoreManager]
         elif self.action == "assign_sales_associate":
             permission_classes = [IsStoreManager]
-        elif self.action in ["dismiss_store_manager", "dismiss_assistant_store_manager"]:
-            permission_classes = [IsStoreOwner]
-        elif self.action == "dismiss_team_leader":
-            permission_classes = [IsStoreManager | IsStoreOwner]
         else:
             permission_classes = [IsStoreManager | IsStoreOwner]
 
         return [permission() for permission in permission_classes]
 
+    class RoleAssignmentAndDismissalHandler:
+        """
+        Utility class for processing role assignments and dismissals within the ViewSet.
+        Works with boolean fields on CustomUser model.
+        """
+        
+        def __init__(self, role_type=None):
+            """
+            Initialize the role handler.
+            
+            Args:
+                role_type (str): Type of role being assigned ('store_owner', 'manager', 'cashier', 'sales_associate')
+            """
+            self.role_type = role_type
+            self.role_configs = {
+                'store_owner': {
+                    'field': 'is_store_owner',
+                    'display_name': 'store owner'
+                },
+                'store_manager': {
+                    'field': 'is_store_manager',
+                    'display_name': 'store manager'
+                },
+                'inventory_manager': {
+                    'field': 'is_inventory_manager',
+                    'display_name': 'inventory manager'
+                }, 
+                'customer_service': {
+                    'field': 'is_customer_service',
+                    'display_name': 'customer service'
+                },
+                'cashier': {
+                    'field': 'is_cashier',
+                    'display_name': 'cashier'
+                },
+                'sales_associate': {
+                    'field': 'is_sales_associate',
+                    'display_name': 'sales associate'
+                }
+            }
+            if self.role_type:
+                self.config = self.role_configs[role_type]
+
+        def process_assignments(self, current_user_id, user_ids):
+            """Process role assignments for multiple users."""
+            assigned_users = []
+            not_found_ids = []
+            invalid_ids = []
+            error_messages = []  # To hold error messages
+            
+            # Convert valid IDs to integers and filter out invalid ones
+            valid_ids = []
+            for user_id in user_ids:
+                try:
+                    user_id_int = int(user_id)
+                    if user_id_int == current_user_id:
+                        error_messages.append(f"Cannot assign {self.config['display_name']} role to yourself.")
+                        continue  # Skip the current user if they try to assign the role to themselves
+                    valid_ids.append(user_id_int)
+                except ValueError:
+                    invalid_ids.append(user_id)
+
+            if valid_ids:
+                # Efficiently fetch existing users
+                existing_users = CustomUser.objects.filter(id__in=valid_ids)
+                existing_user_ids = {user.id: user for user in existing_users}
+                
+                # Process each valid ID
+                for user_id in valid_ids:
+                    user = existing_user_ids.get(user_id)
+                    if not user:
+                        not_found_ids.append(str(user_id))
+                        continue
+                    
+                    if getattr(user, self.config['field']):
+                        error_messages.append(f"User {user.username} is already a {self.config['display_name']}.")
+                        invalid_ids.append(str(user_id))
+                        continue
+                    
+                    # Update user role
+                    setattr(user, self.config['field'], True)
+                    user.save(update_fields=[self.config['field']])
+                    assigned_users.append(user.username)
+
+            # Build response messages
+            response_data = self._build_process_assignment_response_messages(assigned_users, not_found_ids, invalid_ids, error_messages)
+
+            return {
+                'assigned_users': assigned_users,
+                'not_found_ids': not_found_ids,
+                'invalid_ids': invalid_ids,
+                'response_data': response_data
+            }
+
+        def _build_process_assignment_response__messages(self, assigned_users, not_found_ids, invalid_ids, error_messages):
+            """Build response messages for the assignment results."""
+            messages = {}
+            
+            # Handle successful assignments
+            if assigned_users:
+                messages["message"] = (
+                    f"Users {', '.join(assigned_users)} have been assigned as "
+                    f"{self.config['display_name']}s."
+                    if len(assigned_users) > 1
+                    else f"User {assigned_users[0]} has been assigned as a "
+                    f"{self.config['display_name']}."
+                )
+            
+            # Handle users not found
+            if not_found_ids:
+                messages["not_found"] = (
+                    f"Users with IDs {', '.join(not_found_ids)} were not found."
+                    if len(not_found_ids) > 1
+                    else f"User with ID {not_found_ids[0]} was not found."
+                )
+            
+            # Handle invalid IDs
+            if invalid_ids:
+                messages["invalid"] = (
+                    f"Invalid IDs: {', '.join(invalid_ids)}."
+                    if len(invalid_ids) > 1
+                    else f"Invalid ID: {invalid_ids[0]}."
+                )
+
+            # Handle error messages (if any)
+            if error_messages:
+                messages["errors"] = error_messages  # Include all collected error messages
+
+            return messages
+
+        def process_dismissals(self, current_user_id, user_ids):
+            """Process role dismissals for multiple users."""
+            dismissed_users = []
+            not_found_ids = []
+            no_roles_ids = []
+            error_messages = [] 
+            response_data = {}
+            
+            # Convert valid IDs to integers and filter out invalid ones
+            valid_ids = []
+            for user_id in user_ids:
+                try:
+                    user_id_int = int(user_id)
+                    if user_id_int == current_user_id:
+                        error_messages.append(f"You cannot dismiss yourself.")
+                        continue  # Skip the current user if they try to dismiss themselves
+                    valid_ids.append(user_id_int)
+                except ValueError:
+                    not_found_ids.append(user_id)
+
+            if valid_ids:
+                # Efficiently fetch existing users
+                existing_users = CustomUser.objects.filter(id__in=valid_ids)
+                existing_user_ids = {user.id: user for user in existing_users}
+                
+                # Process each valid ID
+                for user_id in valid_ids:
+                    user = existing_user_ids.get(user_id)
+                    if not user:
+                        not_found_ids.append(str(user_id))
+                        continue
+
+                    # Get the user's role using user.get_role()
+                    user_role = user.get_role()
+
+                    if user_role is None:  # No role assigned to the user
+                        no_roles_ids.append(str(user_id))
+                        continue
+
+                    # If the user is a store owner, delete their StoreOwner model instance
+                    if user_role == UserRoles.STORE_OWNER and hasattr(user, 'store_owner_entry'):
+                        user.store_owner_entry.delete()  # Delete the StoreOwner model instance
+
+                    # Dynamically determine the field name for the role
+                    role_field = f'is_{user_role.lower()}'
+
+                    # Clear the user's role
+                    if hasattr(user, role_field):
+                        setattr(user, role_field, False)
+                        user.save(update_fields=[role_field])
+                        dismissed_users.append(user.username)
+
+            # Build response messages
+            response_data.update(
+                self._build_process_dismissal_response_messages(dismissed_users, not_found_ids, no_roles_ids, error_messages)
+            )
+
+            return {
+                'dismissed_users': dismissed_users,
+                'not_found_ids': not_found_ids,
+                'no_roles_ids': no_roles_ids,
+                'error_messages': error_messages,
+                'response_data': response_data
+            }
+
+        def _build_process_dismissal_response_messages(self, dismissed_users, not_found_ids, no_roles_ids, error_messages):
+            """Build response messages for the dismissal results."""
+            messages = {}
+            
+            if dismissed_users:
+                messages["message"] = (
+                    f"Users {', '.join(dismissed_users)} have been dismissed as "
+                    f"{self.config['display_name']}s."
+                    if len(dismissed_users) > 1
+                    else f"User {dismissed_users[0]} has been dismissed as a "
+                    f"{self.config['display_name']}."
+                )
+            
+            if not_found_ids:
+                messages["not_found"] = (
+                    f"Users with IDs {', '.join(not_found_ids)} were not found."
+                    if len(not_found_ids) > 1
+                    else f"User with ID {not_found_ids[0]} was not found."
+                )
+                
+            if no_roles_ids:
+                messages["no_roles"] = (
+                    f"Users with IDs {', '.join(no_roles_ids)} don't have the {self.config['display_name']} role."
+                    if len(no_roles_ids) > 1
+                    else f"User with ID {no_roles_ids[0]} doesn't have the {self.config['display_name']} role."
+                )
+
+            # Handle error messages (if any)
+            if error_messages:
+                messages["errors"] = error_messages  # Include all collected error messages
+
+            return messages
+
+
+        def _format_empty_response(self, response_data):
+            """Format response for error cases with no assignments."""
+            return {
+                'assigned_users': [],
+                'not_found_ids': [],
+                'invalid_ids': [],
+                'response_data': response_data
+            }
+        
     @action(detail=False, methods=["post"])
     def assign_store_owner(self, request):
-        """
-        Assign store owner roles to selected users.
-        The first user in the system automatically becomes a store owner.
-        Subsequent store owners can only be assigned by existing store owners.
-        
-        Request body:
-            user_ids: List of user IDs to assign store owner role
-            
-        Returns:
-            Response with success/error messages and appropriate HTTP status code
-        """
-        # Check if this is the first user
-        total_users = CustomUser.objects.count()
-        if total_users == 1 and request.user.id == CustomUser.objects.first().id:
+        """Assign store owner roles to selected users."""
+        # Handle first store owner case
+         # Check if this is the first user (ID=1) case
+        if not StoreOwner.objects.exists():
+            if request.user.id != 1:
+                return Response(
+                    {"error": "Only the first registered user (ID=1) can become the initial store owner."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            StoreOwner.objects.create(user=request.user)
             request.user.is_store_owner = True
             request.user.save()
             return Response(
                 {"message": "You have been assigned as the first store owner."},
                 status=status.HTTP_200_OK
-            )
-
-        # For subsequent assignments, verify store owner permission
-        if not request.user.is_store_owner:
-            return Response(
-                {"error": "Only store owners can assign store owner roles."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        )
 
         # Get and validate user IDs
         user_ids = request.data.getlist("user_ids", [])
@@ -137,73 +362,20 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment for non-first users
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign store owner role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_store_owner:
-                    return Response(
-                        {"error": f"User {user.username} is already a store owner."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_store_owner()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as store owners."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as a store owner."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
-    
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='store_owner')
+        result = handler.process_assignments(request.user.id, user_ids)
+        
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        # For each user that was assigned the store owner role, create an associated StoreOwner entry
+        for username in result['assigned_users']:
+            user = CustomUser.objects.get(username=username)
+            StoreOwner.objects.create(user=user)  # Associate with StoreOwner model
+        return Response(result['response_data'], status=status.HTTP_200_OK)
+   
+        
     @action(detail=False, methods=["post"])
     def assign_store_manager(self, request):
         """
@@ -225,73 +397,15 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment for non-first users
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign store owner role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_store_manager:
-                    return Response(
-                        {"error": f"User {user.username} is already a store owner."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_store_manager()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as store manager."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as a store manager."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='store_manager')
+        result = handler.process_assignments(request.user.id, user_ids)
         
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result['response_data'], status=status.HTTP_200_OK)
+    
     @action(detail=False, methods=["post"])
     def assign_inventory_manager(self, request):
         """
@@ -312,74 +426,15 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment for non-first users
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign inventory manager role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_inventory_manager:
-                    return Response(
-                        {"error": f"User {user.username} is already ainventory manager."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_inventory_manager()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as inventory managers."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as an inventory manager."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='inventory_manager')
+        result = handler.process_assignments(request.user.id, user_ids)
+        
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result['response_data'], status=status.HTTP_200_OK)
     
-
     @action(detail=False, methods=["post"])
     def assign_sales_associate(self, request):
         """
@@ -400,72 +455,14 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment for non-first users
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign Sales associate role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_sales_associate():
-                    return Response(
-                        {"error": f"User {user.username} is already a sales associate."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_sales_associate()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as sales associates."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as an sales associate."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='sales_associate')
+        result = handler.process_assignments(request.user.id, user_ids)
+        
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result['response_data'], status=status.HTTP_200_OK)
     
 
     @action(detail=False, methods=["post"])
@@ -488,72 +485,14 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign customer service role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_customer_service():
-                    return Response(
-                        {"error": f"User {user.username} is already a sales associate."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_customer_service()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as customer service."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as an customer service."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='customer_service')
+        result = handler.process_assignments(request.user.id, user_ids)
+        
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result['response_data'], status=status.HTTP_200_OK)
     
 
     @action(detail=False, methods=["post"])
@@ -576,72 +515,112 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        current_user_id = request.user.id
-        assigned_users = []
-        not_found_ids = []
-        invalid_ids = []
-        response_data = {}
-
-        # Process each user ID
-        for user_id in user_ids:
-            try:
-                user_id_int = int(user_id)
-                
-                # Prevent self-assignment
-                if user_id_int == current_user_id:
-                    return Response(
-                        {"error": "Cannot assign customer service role to yourself."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                user = CustomUser.objects.get(id=user_id_int)
-                
-                # Check if user is already a store owner
-                if user.is_customer_service():
-                    return Response(
-                        {"error": f"User {user.username} is already a sales associate."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Assign store owner role
-                user.assign_customer_service()
-                assigned_users.append(user.username)
-                
-            except ValueError:
-                invalid_ids.append(user_id)
-            except CustomUser.DoesNotExist:
-                if user_id.isdigit():
-                    not_found_ids.append(user_id)
-                else:
-                    invalid_ids.append(user_id)
-
-        # Build response messages
-        if assigned_users:
-            response_data["message"] = (
-                f"Users {', '.join(assigned_users)} have been assigned as customer service."
-                if len(assigned_users) > 1
-                else f"User {assigned_users[0]} has been assigned as an customer service."
-            )
-
-        if not_found_ids:
-            response_data["not_found"] = (
-                f"Users with IDs {', '.join(not_found_ids)} were not found."
-                if len(not_found_ids) > 1
-                else f"User with ID {not_found_ids[0]} was not found."
-            )
-
-        if invalid_ids:
-            response_data["invalid"] = (
-                f"Invalid IDs: {', '.join(invalid_ids)}."
-                if len(invalid_ids) > 1
-                else f"Invalid ID: {invalid_ids[0]}."
-            )
-
-        # Return 400 if no users were assigned and there were errors
-        if not assigned_users and (not_found_ids or invalid_ids):
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Process assignments using the universal handler
+        handler = self.RoleAssignmentAndDismissalHandler(role_type='cashier')
+        result = handler.process_assignments(request.user.id, user_ids)
+        
+        if not result['assigned_users'] and (result['not_found_ids'] or result['invalid_ids']):
+            return Response(result['response_data'], status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result['response_data'], status=status.HTTP_200_OK)
     
+    @action(detail=False, methods=['post'], url_path='dismiss-role')
+    def dismiss_role(self, request):
+        """
+        Dismiss roles for users (store owner, manager, etc.).
 
+        Request body:
+        - user_ids: List of user IDs to be dismissed.
+
+        Returns:
+            Response with success/error messages and appropriate HTTP status code
+        """
+        user_ids = request.data.getlist("user_ids", [])
+        current_user_id = request.user.id  # The ID of the user making the request (typically the logged-in user)
+
+        if  not user_ids:
+            return Response(
+                {"error": "User IDs must be provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Create the role handler for the specified role
+        role_handler = RoleAssignmentAndDismissalHandler()
+
+        # Process the dismissals
+        result = role_handler.process_dismissals(current_user_id, user_ids)
+
+        # Return the result
+        return Response(result, status=status.HTTP_200_OK)
     
+    class StaffMemberPagination(PageNumberPagination):
+        page_size = 10  # Set the default page size for pagination
+        page_size_query_param = 'page_size'
+        max_page_size = 100  # Max number of items per page
+    
+    @action(detail=False, methods=['get'], url_path='staff-members')
+    def get_staff_members(self, request):
+        """
+        Retrieve all staff members who have a role assigned.
+
+        Query Parameters:
+        - role_type: (optional) The role to filter by (e.g., "store_owner").
+        - page: (optional) The page number for pagination.
+        - page_size: (optional) The number of staff members per page (default 10).
+
+        Returns:
+            A paginated list of staff members with roles set to True.
+        """
+        role_type = request.query_params.get('role_type')
+        
+        # Base query for filtering staff members who have at least one role assigned
+        staff_members_query = CustomUser.objects.filter(
+            is_store_owner=True
+        ) | CustomUser.objects.filter(
+            is_store_manager=True
+        ) | CustomUser.objects.filter(
+            is_inventory_manager=True
+        ) | CustomUser.objects.filter(
+            is_sales_associate=True
+        ) | CustomUser.objects.filter(
+            is_customer_service=True
+        ) | CustomUser.objects.filter(
+            is_cashier=True
+        )
+        
+        # If a role_type is provided, filter further by the specified role
+        if role_type:
+            if role_type == 'store_owner':
+                staff_members_query = staff_members_query.filter(is_store_owner=True)
+            elif role_type == 'store_manager':
+                staff_members_query = staff_members_query.filter(is_store_manager=True)
+            elif role_type == 'inventory_manager':
+                staff_members_query = staff_members_query.filter(is_inventory_manager=True)
+            elif role_type == 'sales_associate':
+                staff_members_query = staff_members_query.filter(is_sales_associate=True)
+            elif role_type == 'customer_service':
+                staff_members_query = staff_members_query.filter(is_customer_service=True)
+            elif role_type == 'cashier':
+                staff_members_query = staff_members_query.filter(is_cashier=True)
+            else:
+                return Response(
+                    {"error": f"Invalid role type: {role_type}. Valid types are: store_owner, store_manager, inventory_manager, sales_associate, customer_service, cashier."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Paginate the results
+        paginator = self.StaffMemberPagination()
+        result_page = paginator.paginate_queryset(staff_members_query, request)
+        
+        # Serialize the user data
+        staff_data = [
+            {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.get_full_name(),
+                "role": user.get_role()
+            }
+            for user in result_page
+        ]
+        
+        # Return the paginated response with staff members data
+        return paginator.get_paginated_response(staff_data)
