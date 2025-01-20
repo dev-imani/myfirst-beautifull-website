@@ -3,8 +3,9 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
-from users.choices import *
-from users.validators import *
+from users.choices import SexChoices, UserRoles
+
+from users.validators import CustomUserValidator
 
 class CustomUser(AbstractUser):
     """
@@ -128,4 +129,13 @@ class CustomUser(AbstractUser):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+class StoreOwner(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="store_owner_entry")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"Store Owner: {self.user.username}"
 
