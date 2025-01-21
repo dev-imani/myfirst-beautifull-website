@@ -27,14 +27,13 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     - destroy: Delete an existing custom user account.
     - assign_store_owner: Assign the store owner role to selected users.
     - assign_store_manager: Assign the store manager role to selected users.
-    - assign_assistant_store_manager: Assign the assistant store manager role to selected users.
-    - assign_store_worker: Assign the store worker role to selected users.
-    - assign_team_leader_manager: Assign the team leader role to selected users.
-    - dismiss_assistant_store_manager: Dismiss the assistant store manager role from selected users.
-    - dismiss_store_manager: Dismiss the store manager role from selected users.
-    - dismiss_store_worker: Dismiss the store worker role from selected users.
-    - dismiss_team_leader_manager: Dismiss the team leader role from selected users.
-
+    - assign_inventory_manager Assign the inventory manager role to selected users.
+    - assign_sales_associate: Assign the sales associate role to selected users.
+    - assign_customer_service: Assign the customer service role to selected users.
+    - assign_cashier: Assign the cashier role to selected users.
+    - get_staff_members: Retrieve a list of staff members with roles assigned.
+    - dismiss_role: Dismiss roles from selected users.
+    
     Serializer class used for request/response data depends on the action:
     - CustomUserCreateSerializer for the 'create' action.
     - CustomUserUpdateSerializer for the 'update' action.
@@ -88,9 +87,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             "dismiss_role"
         ]:
             permission_classes = [IsStoreOwner]
-        elif self.action in ["assign_inventory_manager", "get_staff_members"]:
-            permission_classes = [IsStoreManager]
-        elif self.action == "assign_sales_associate":
+        elif self.action in ["assign_inventory_manager", "get_staff_members", "assign_cashier", "assign_sales_associate", "assign_customer_service"]:
             permission_classes = [IsStoreManager]
         else:
             permission_classes = [IsStoreManager | IsStoreOwner]
@@ -104,42 +101,77 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         """
         
         def __init__(self, role_type=None):
-            """
-            Initialize the role handler.
-            
-            Args:
-                role_type (str): Type of role being assigned ('store_owner', 'manager', 'cashier', 'sales_associate')
-            """
             self.role_type = role_type
-            self.role_configs = {
-                'store_owner': {
-                    'field': 'is_store_owner',
-                    'display_name': 'store owner'
-                },
-                'store_manager': {
-                    'field': 'is_store_manager',
-                    'display_name': 'store manager'
-                },
-                'inventory_manager': {
-                    'field': 'is_inventory_manager',
-                    'display_name': 'inventory manager'
-                }, 
-                'customer_service': {
-                    'field': 'is_customer_service',
-                    'display_name': 'customer service'
-                },
-                'cashier': {
-                    'field': 'is_cashier',
-                    'display_name': 'cashier'
-                },
-                'sales_associate': {
-                    'field': 'is_sales_associate',
-                    'display_name': 'sales associate'
+            # Only set these configurations if we're doing an assignment
+            if role_type is not None:
+                self.role_configs = {
+                    'store_owner': {
+                        'field': 'is_store_owner',
+                        'display_name': 'store owner'
+                    },
+                    'store_manager': {
+                        'field': 'is_store_manager',
+                        'display_name': 'store manager'
+                    },
+                    'inventory_manager': {
+                        'field': 'is_inventory_manager',
+                        'display_name': 'inventory manager'
+                    }, 
+                    'customer_service': {
+                        'field': 'is_customer_service',
+                        'display_name': 'customer service'
+                    },
+                    'cashier': {
+                        'field': 'is_cashier',
+                        'display_name': 'cashier'
+                    },
+                    'sales_associate': {
+                        'field': 'is_sales_associate',
+                        'display_name': 'sales associate'
+                    }
                 }
-            }
-            if self.role_type:
-                self.config = self.role_configs[role_type]
+                if role_type in self.role_configs:
+                    self.config = self.role_configs[role_type]
+                else:
+                    raise ValueError(f"Invalid role type: {role_type}")
+                    
 
+        def _build_process_assignment_response__messages(self, assigned_users, not_found_ids, invalid_ids, error_messages):
+            """Build response messages for the assignment results."""
+            messages = {}
+            
+            # Handle successful assignments
+            if assigned_users:
+                messages["message"] = (
+                    f"Users {', '.join(assigned_users)} have been assigned as "
+                    f"{self.config['display_name']}s."
+                    if len(assigned_users) > 1
+                    else f"User {assigned_users[0]} has been assigned as a "
+                    f"{self.config['display_name']}."
+                )
+            
+            # Handle users not found
+            if not_found_ids:
+                messages["not_found"] = (
+                    f"Users with IDs {', '.join(not_found_ids)} were not found."
+                    if len(not_found_ids) > 1
+                    else f"User with ID {not_found_ids[0]} was not found."
+                )
+            
+            # Handle invalid IDs
+            if invalid_ids:
+                messages["invalid"] = (
+                    f"Invalid IDs: {', '.join(invalid_ids)}."
+                    if len(invalid_ids) > 1
+                    else f"Invalid ID: {invalid_ids[0]}."
+                )
+
+            # Handle error messages (if any)
+            if error_messages:
+                messages["errors"] = error_messages  # Include all collected error messages
+
+            return messages
+        
         def process_assignments(self, current_user_id, user_ids):
             """Process role assignments for multiple users."""
             assigned_users = []
@@ -177,12 +209,13 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                         continue
                     
                     # Update user role
+                    user._clear_all_roles
                     setattr(user, self.config['field'], True)
                     user.save(update_fields=[self.config['field']])
                     assigned_users.append(user.username)
 
             # Build response messages
-            response_data = self._build_process_assignment_response_messages(assigned_users, not_found_ids, invalid_ids, error_messages)
+            response_data = self._build_process_assignment_response__messages(assigned_users, not_found_ids, invalid_ids, error_messages)
 
             return {
                 'assigned_users': assigned_users,
@@ -191,41 +224,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 'response_data': response_data
             }
 
-        def _build_process_assignment_response__messages(self, assigned_users, not_found_ids, invalid_ids, error_messages):
-            """Build response messages for the assignment results."""
-            messages = {}
-            
-            # Handle successful assignments
-            if assigned_users:
-                messages["message"] = (
-                    f"Users {', '.join(assigned_users)} have been assigned as "
-                    f"{self.config['display_name']}s."
-                    if len(assigned_users) > 1
-                    else f"User {assigned_users[0]} has been assigned as a "
-                    f"{self.config['display_name']}."
-                )
-            
-            # Handle users not found
-            if not_found_ids:
-                messages["not_found"] = (
-                    f"Users with IDs {', '.join(not_found_ids)} were not found."
-                    if len(not_found_ids) > 1
-                    else f"User with ID {not_found_ids[0]} was not found."
-                )
-            
-            # Handle invalid IDs
-            if invalid_ids:
-                messages["invalid"] = (
-                    f"Invalid IDs: {', '.join(invalid_ids)}."
-                    if len(invalid_ids) > 1
-                    else f"Invalid ID: {invalid_ids[0]}."
-                )
-
-            # Handle error messages (if any)
-            if error_messages:
-                messages["errors"] = error_messages  # Include all collected error messages
-
-            return messages
+       
 
         def process_dismissals(self, current_user_id, user_ids):
             """Process role dismissals for multiple users."""
@@ -544,7 +543,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         # Create the role handler for the specified role
-        role_handler = RoleAssignmentAndDismissalHandler()
+        role_handler = self.RoleAssignmentAndDismissalHandler()
 
         # Process the dismissals
         result = role_handler.process_dismissals(current_user_id, user_ids)

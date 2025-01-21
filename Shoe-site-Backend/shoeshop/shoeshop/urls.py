@@ -26,6 +26,7 @@ schema_view = get_schema_view(
 urlpatterns = [
     # Include authentication URLs provided by Djoser
     path("auth/", include("djoser.urls")),
+    path('auth/', include('djoser.urls.authtoken')),
     # Include URLs from the 'users' app, and set a namespace for clarity
     path("users/", include("users.urls", namespace="users")),
     # URL for Swagger documentation with UI
