@@ -12,8 +12,27 @@ def test_user_login(setup_users):
         "password": "testpassword",
     }
     response = client.post(reverse("users:login"), login_data)
+    token = response.data["auth_token"]
     assert response.status_code == status.HTTP_200_OK
     assert "auth_token" in response.data
+    store_manager_user_id = setup_users["store_manager_user_id"]
+    inventory_manager_user_id = setup_users["inventory_manager_user_id"]
+    response = client.post(
+        reverse("users:users-assign-store-owner"),  # Note the format: viewset-name-action-name
+        data={},  # Add empty data dict since it's the first store owner
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["error"] == "No user IDs provided."
+    
+    #test assignment of roles by the store owner to an already existing role
+    response = client.post(
+        reverse("users:users-assign-store-manager"),  # Note the format: viewset-name-action-name
+        data={"user_ids":[inventory_manager_user_id,]}, 
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    assert response.status_code == status.HTTP_200_OK
+    
 
 @pytest.mark.django_db
 def test_authorized_access(setup_users):
@@ -113,7 +132,7 @@ class TestRoleAssignments:
             # Store Owner can assign all roles
             (
                 "users-assign-store-owner",
-                "store_owner_user_id",
+                "store_manager_user_id",
                 "store_owner_token",
                 status.HTTP_200_OK,
             ),
@@ -138,7 +157,7 @@ class TestRoleAssignments:
             ),
             (
                 "users-assign-customer-service",
-                "customer_service_user_id",
+                "sales_associate_user_id",
                 "store_manager_token",
                 status.HTTP_200_OK,
             ),
@@ -194,8 +213,9 @@ class TestRoleAssignments:
         
         # Assert the expected status code
         assert response.status_code == expected_status
-
-    ''' @pytest.mark.parametrize(
+    
+    
+    @pytest.mark.parametrize(
         "dismiss_endpoint, user_id, token, expected_status",
         [
             # Store Owner can dismiss any role
@@ -220,7 +240,7 @@ class TestRoleAssignments:
             (
                 "users-dismiss-role",
                 "customer_service_user_id",
-                "store_ownertoken",
+                "store_owner_token",
                 status.HTTP_200_OK,
             ),
             # Invalid dismissals - testing permissions
@@ -252,4 +272,5 @@ class TestRoleAssignments:
             {"user_ids": user_ids},
             HTTP_AUTHORIZATION=f"Token {getattr(self, token)}"
         )
-        assert response.status_code == expected_status'''
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status

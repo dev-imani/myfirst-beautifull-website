@@ -19,7 +19,6 @@ def setup_users():
         "last_name": "Owner",
         "phone_number": "+254787654321",
         "sex": SexChoices.MALE,
-        "is_store_owner": True,
     }
     store_owner_login_data = {
         "email": "abc1@gmail.com",
@@ -27,21 +26,27 @@ def setup_users():
     }
     response = client.post("/auth/users/", store_owner_data)
     store_owner_user_id = response.data["id"]
-    print("store owner data after registration:", response.data)
+    
     # Retrieve the token after login
     response = client.post(reverse("users:login"), store_owner_login_data)
     store_owner_token = response.data["auth_token"]
-    print("Store owner data##### ::", response.data)
+    
+    #assign store owner role
+    response = client.post(
+        reverse("users:users-assign-store-owner"),  # Note the format: viewset-name-action-name
+        data={},  # Add empty data dict since it's the first store owner
+        HTTP_AUTHORIZATION=f"Token {store_owner_token}"
+    )
+    print("response data after store owner assignment", response.data)
     # Create store manager user
     store_manager_data = {
-        "username": "manager",
+        "username": "store_manager",
         "email": "abc2@gmail.com",
         "password": "testpassword",
         "first_name": "store",
         "last_name": "Manager",
         "phone_number": "+254755555555",
         "sex": SexChoices.MALE,
-        "is_store_manager": True,
     }
     store_manager_login_data = {
         "email": "abc2@gmail.com",
@@ -49,11 +54,18 @@ def setup_users():
     }
     response = client.post("/auth/users/", store_manager_data)
     store_manager_user_id = response.data["id"]
-    print("store manager data after registration:", response.data)
+    
     # Retrieve the token after login
     response = client.post(reverse("users:login"), store_manager_login_data)
     store_manager_token = response.data["auth_token"]
-    print("Store manager data##### ::", response.data)
+    
+    #assign storemanager role
+    response = client.post(
+        reverse("users:users-assign-store-manager"),  # Note the format: viewset-name-action-name
+        data={"user_ids":[store_manager_user_id,]}, 
+        HTTP_AUTHORIZATION=f"Token {store_owner_token}"
+    )
+    print("response data after store manager assignment", response.data)
     # Create inventory manager user
     inventory_manager_data = {
         "username": "inventorymanager",
@@ -63,7 +75,6 @@ def setup_users():
         "last_name": "Manager",
         "phone_number": "+254744444444",
         "sex": SexChoices.FEMALE,
-        "is_inventory_manager": True,
     }
     inventory_manager_login_data = {
         "email": "abc3@gmail.com",
@@ -74,7 +85,15 @@ def setup_users():
     # Retrieve the token after login
     response = client.post(reverse("users:login"), inventory_manager_login_data)
     inventry_manager_token = response.data["auth_token"]
-    print("Inventory manager data##### ::", response.data)
+   
+    #assign inventory manager role
+    response = client.post(
+        reverse('users:users-assign-inventory-manager'),  # Note the format: viewset-name-action-name
+        data={"user_ids":[inventory_manager_user_id,]}, 
+        HTTP_AUTHORIZATION=f"Token {store_manager_token}"
+    )
+    print("response data after inventory manager assignment", response.data)
+    
 
     # Create sales_associate user
     sales_associate_data = {
@@ -98,6 +117,14 @@ def setup_users():
     assert response.status_code == status.HTTP_200_OK
     sales_associate_token = response.data["auth_token"]
 
+    #assign sales associate role
+    response = client.post(
+        reverse("users:users-assign-sales-associate"),  # Note the format: viewset-name-action-name
+        data={"user_ids":[sales_associate_user_id,]}, 
+        HTTP_AUTHORIZATION=f"Token {store_manager_token}"
+    )
+    print("response data after sales associate assignment", response.data)
+    
     # Create customer service user
     customer_service_data = {
         "username": "customerservice",
@@ -118,6 +145,14 @@ def setup_users():
     # Retrieve the token after login
     response = client.post(reverse("users:login"), customer_service_login_data)
     customer_service_token = response.data["auth_token"]
+    
+    #assign customer service role
+    response = client.post(
+        reverse("users:users-assign-customer-service"),  # Note the format: viewset-name-action-name
+        data={"user_ids":[customer_service_user_id,]}, 
+        HTTP_AUTHORIZATION=f"Token {store_manager_token}"
+    )
+    print("response data after customer service assignment", response.data)
     
     return {
         "client": client,

@@ -10,6 +10,7 @@ from users.permissions import (
     IsSelfProfile,
     IsInventoryManager,
 )
+from rest_framework.permissions import IsAuthenticated
 from users.serializers import CustomUserSerializer,CustomUserUpdateSerializer, CustomUserCreateSerializer
 
 
@@ -77,6 +78,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         - For 'dismiss_store_worker': Only store managers or owners are allowed.
 
         """
+        # Special case for first store owner assignment
+        if self.action == "assign_store_owner" and not StoreOwner.objects.exists():
+            return [IsAuthenticated()]
         if self.action in ["list", "retrieve", "destroy"]:
             permission_classes = [IsStoreOwner| IsStoreManager]
         elif self.action in ["update", "partial_update"]:
@@ -209,7 +213,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                         continue
                     
                     # Update user role
-                    user._clear_all_roles
+                    user._clear_all_roles()
                     setattr(user, self.config['field'], True)
                     user.save(update_fields=[self.config['field']])
                     assigned_users.append(user.username)
@@ -227,104 +231,160 @@ class CustomUserViewSet(viewsets.ModelViewSet):
        
 
         def process_dismissals(self, current_user_id, user_ids):
-            """Process role dismissals for multiple users."""
-            dismissed_users = []
-            not_found_ids = []
-            no_roles_ids = []
-            error_messages = [] 
-            response_data = {}
+            """
+            Process role dismissals for multiple users.
             
-            # Convert valid IDs to integers and filter out invalid ones
+            Args:
+                current_user_id (int): ID of the user initiating the dismissal
+                user_ids (list): List of user IDs to dismiss
+            
+            Returns:
+                dict: Comprehensive results of the dismissal process
+            """
+            # Initialize result tracking containers
+            result = {
+                'dismissed_users': [],
+                'not_found_ids': [],
+                'no_roles_ids': [],
+                'error_messages': [],
+                'response_data': {}
+            }
+            
+            # Validate and prepare user IDs
+            valid_ids = self._validate_user_ids(current_user_id, user_ids, result)
+            
+            # If no valid IDs, return early
+            if not valid_ids:
+                result['response_data'] = self._build_dismissal_response(result)
+                return result
+            
+            # Fetch existing users efficiently
+            existing_users = self._fetch_existing_users(valid_ids)
+            
+            # Process each valid user
+            for user in existing_users:
+                try:
+                    self._process_user_dismissal(user, result)
+                except Exception as e:
+                    result['error_messages'].append(
+                        f"Error dismissing roles for user {user.username}: {str(e)}"
+                    )
+            
+            # Generate response messages
+            result['response_data'] = self._build_dismissal_response(result)
+            
+            return result
+
+        def _validate_user_ids(self, current_user_id, user_ids, result):
+            """
+            Validate and filter user IDs.
+            
+            Args:
+                current_user_id (int): ID of the current user
+                user_ids (list): List of user IDs to validate
+                result (dict): Result tracking dictionary
+            
+            Returns:
+                list: Validated user IDs
+            """
             valid_ids = []
+            
             for user_id in user_ids:
                 try:
                     user_id_int = int(user_id)
+                    
+                    # Prevent self-dismissal
                     if user_id_int == current_user_id:
-                        error_messages.append(f"You cannot dismiss yourself.")
-                        continue  # Skip the current user if they try to dismiss themselves
+                        result['error_messages'].append("You cannot dismiss yourself.")
+                        continue
+                    
                     valid_ids.append(user_id_int)
-                except ValueError:
-                    not_found_ids.append(user_id)
-
-            if valid_ids:
-                # Efficiently fetch existing users
-                existing_users = CustomUser.objects.filter(id__in=valid_ids)
-                existing_user_ids = {user.id: user for user in existing_users}
                 
-                # Process each valid ID
-                for user_id in valid_ids:
-                    user = existing_user_ids.get(user_id)
-                    if not user:
-                        not_found_ids.append(str(user_id))
-                        continue
+                except ValueError:
+                    result['not_found_ids'].append(user_id)
+            
+            return valid_ids
 
-                    # Get the user's role using user.get_role()
-                    user_role = user.get_role()
+        def _fetch_existing_users(self, valid_ids):
+            """
+            Fetch existing users based on valid IDs.
+            
+            Args:
+                valid_ids (list): List of validated user IDs
+            
+            Returns:
+                QuerySet: Existing users
+            """
+            return CustomUser.objects.filter(id__in=valid_ids)
 
-                    if user_role is None:  # No role assigned to the user
-                        no_roles_ids.append(str(user_id))
-                        continue
+        def _process_user_dismissal(self, user, result):
+            """
+            Process dismissal for a single user.
+            
+            Args:
+                user (CustomUser): User to dismiss
+                result (dict): Result tracking dictionary
+            """
+            # Check if user has a role
+            user_role = user.get_role()
+            
+            if user_role is None:
+                result['no_roles_ids'].append(str(user.id))
+                return
+            
+            # Special handling for store owner
+            if user_role == UserRoles.STORE_OWNER and hasattr(user, 'store_owner_entry'):
+                user.store_owner_entry.delete()
+            
+            # Clear user roles
+            role_field = f'is_{user_role.lower()}'
+            
+            if hasattr(user, role_field):
+                setattr(user, role_field, False)
+                user.save(update_fields=[role_field])
+                result['dismissed_users'].append(user.username)
 
-                    # If the user is a store owner, delete their StoreOwner model instance
-                    if user_role == UserRoles.STORE_OWNER and hasattr(user, 'store_owner_entry'):
-                        user.store_owner_entry.delete()  # Delete the StoreOwner model instance
-
-                    # Dynamically determine the field name for the role
-                    role_field = f'is_{user_role.lower()}'
-
-                    # Clear the user's role
-                    if hasattr(user, role_field):
-                        setattr(user, role_field, False)
-                        user.save(update_fields=[role_field])
-                        dismissed_users.append(user.username)
-
-            # Build response messages
-            response_data.update(
-                self._build_process_dismissal_response_messages(dismissed_users, not_found_ids, no_roles_ids, error_messages)
-            )
-
-            return {
-                'dismissed_users': dismissed_users,
-                'not_found_ids': not_found_ids,
-                'no_roles_ids': no_roles_ids,
-                'error_messages': error_messages,
-                'response_data': response_data
-            }
-
-        def _build_process_dismissal_response_messages(self, dismissed_users, not_found_ids, no_roles_ids, error_messages):
-            """Build response messages for the dismissal results."""
+        def _build_dismissal_response(self, result):
+            """
+            Build response messages based on dismissal results.
+            
+            Args:
+                result (dict): Result tracking dictionary
+            
+            Returns:
+                dict: Response messages
+            """
             messages = {}
             
-            if dismissed_users:
-                messages["message"] = (
-                    f"Users {', '.join(dismissed_users)} have been dismissed as "
-                    f"{self.config['display_name']}s."
-                    if len(dismissed_users) > 1
-                    else f"User {dismissed_users[0]} has been dismissed as a "
-                    f"{self.config['display_name']}."
+            # Dismissed users message
+            if result['dismissed_users']:
+                messages['message'] = (
+                    f"Users {', '.join(result['dismissed_users'])} have been dismissed from their roles."
+                    if len(result['dismissed_users']) > 1
+                    else f"User {result['dismissed_users'][0]} has been dismissed from their role."
                 )
             
-            if not_found_ids:
-                messages["not_found"] = (
-                    f"Users with IDs {', '.join(not_found_ids)} were not found."
-                    if len(not_found_ids) > 1
-                    else f"User with ID {not_found_ids[0]} was not found."
+            # Not found users message
+            if result['not_found_ids']:
+                messages['not_found'] = (
+                    f"Users with IDs {', '.join(result['not_found_ids'])} were not found."
+                    if len(result['not_found_ids']) > 1
+                    else f"User with ID {result['not_found_ids'][0]} was not found."
                 )
-                
-            if no_roles_ids:
-                messages["no_roles"] = (
-                    f"Users with IDs {', '.join(no_roles_ids)} don't have the {self.config['display_name']} role."
-                    if len(no_roles_ids) > 1
-                    else f"User with ID {no_roles_ids[0]} doesn't have the {self.config['display_name']} role."
+            
+            # No roles message
+            if result['no_roles_ids']:
+                messages['no_roles'] = (
+                    f"Users with IDs {', '.join(result['no_roles_ids'])} have no roles to dismiss."
+                    if len(result['no_roles_ids']) > 1
+                    else f"User with ID {result['no_roles_ids'][0]} has no role to dismiss."
                 )
-
-            # Handle error messages (if any)
-            if error_messages:
-                messages["errors"] = error_messages  # Include all collected error messages
-
+            
+            # Error messages
+            if result['error_messages']:
+                messages['errors'] = result['error_messages']
+    
             return messages
-
-
         def _format_empty_response(self, response_data):
             """Format response for error cases with no assignments."""
             return {

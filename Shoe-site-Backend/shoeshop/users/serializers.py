@@ -40,15 +40,13 @@ class CustomUserCreateSerializer(UserCreateSerializer):
             "first_name",
             "last_name",
             "phone_number",
-            "sex",
-            "is_store_owner",
-            "is_store_manager"
+            "sex"
         )
 
     def create(self, validated_data):
         user = super().create(validated_data)
         # Clear all roles after user creation
-        #user._clear_all_roles()
+        user._clear_all_roles()
         user.save()
         return user
 class CustomUserSerializer(UserSerializer):
