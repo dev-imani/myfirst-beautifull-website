@@ -2,14 +2,14 @@ from django.urls import path, include
 from djoser.views import TokenCreateView, TokenDestroyView
 from rest_framework import routers
 
-from users.views import CustomUserViewSet
+from users.views import CustomUserViewSet, StaffMemberViewSet
 
 # Set the app name for namespacing
 app_name = "users"
 
 router = routers.DefaultRouter()
 router.register(r"", CustomUserViewSet, basename="users")
-
+router.register(r"staff", StaffMemberViewSet, basename="staff")
 # Define URL patterns for the 'users' app
 urlpatterns = [
     # URL for user authentication (login)

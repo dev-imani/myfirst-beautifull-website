@@ -32,6 +32,12 @@ def test_user_login(setup_users):
         HTTP_AUTHORIZATION=f"Token {token}"
     )
     assert response.status_code == status.HTTP_200_OK
+
+    response = client.get(
+        reverse("users:staff-get-staff-members"),  # Note the format: viewset-name-action-name
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"response data after get staff roles summary: {response.data}")
     
 
 @pytest.mark.django_db

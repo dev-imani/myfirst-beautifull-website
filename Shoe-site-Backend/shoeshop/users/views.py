@@ -1,7 +1,9 @@
 from rest_framework import status, viewsets, pagination
-from rest_framework.pagination import PageNumberPagination
+from django.core.exceptions import FieldError
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
+from django.db.models import Q
 from users.choices import UserRoles
 from users.models import CustomUser, StoreOwner
 from users.permissions import (
@@ -11,7 +13,8 @@ from users.permissions import (
     IsInventoryManager,
 )
 from rest_framework.permissions import IsAuthenticated
-from users.serializers import CustomUserSerializer,CustomUserUpdateSerializer, CustomUserCreateSerializer
+from users.serializers import CustomUserSerializer,CustomUserUpdateSerializer, CustomUserCreateSerializer, StaffMemberSerializer
+from users.utils import StaffMemberPagination
 
 
 class CustomUserViewSet(viewsets.ModelViewSet):
@@ -32,8 +35,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     - assign_sales_associate: Assign the sales associate role to selected users.
     - assign_customer_service: Assign the customer service role to selected users.
     - assign_cashier: Assign the cashier role to selected users.
-    - get_staff_members: Retrieve a list of staff members with roles assigned.
-    - dismiss_role: Dismiss roles from selected users.
+   
     
     Serializer class used for request/response data depends on the action:
     - CustomUserCreateSerializer for the 'create' action.
@@ -91,7 +93,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             "dismiss_role"
         ]:
             permission_classes = [IsStoreOwner]
-        elif self.action in ["assign_inventory_manager", "get_staff_members", "assign_cashier", "assign_sales_associate", "assign_customer_service"]:
+        elif self.action in ["assign_inventory_manager", "get_staff_members", "assign_cashier", "assign_sales_associate", "assign_customer_service", "get_available_staff_roles"]:
             permission_classes = [IsStoreManager]
         else:
             permission_classes = [IsStoreManager | IsStoreOwner]
@@ -611,75 +613,160 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         # Return the result
         return Response(result, status=status.HTTP_200_OK)
     
-    class StaffMemberPagination(PageNumberPagination):
-        page_size = 10  # Set the default page size for pagination
-        page_size_query_param = 'page_size'
-        max_page_size = 100  # Max number of items per page
-    
+class StaffMemberViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing and retrieving staff member information.
+    Provides advanced filtering, searching, and ordering capabilities.
+    """
+
+    serializer_class = StaffMemberSerializer
+
+    # Predefined role configurations
+    ROLE_MAPPING = {
+        'store_owner': 'is_store_owner',
+        'store_manager': 'is_store_manager',
+        'inventory_manager': 'is_inventory_manager',
+        'sales_associate': 'is_sales_associate',
+        'customer_service': 'is_customer_service',
+        'cashier': 'is_cashier'
+    }
+
+    def get_queryset(self):
+        """
+        Custom queryset to only return staff members with roles
+        """
+        return CustomUser.objects.filter(
+            Q(is_store_owner=True) | 
+            Q(is_store_manager=True) | 
+            Q(is_inventory_manager=True) | 
+            Q(is_sales_associate=True) | 
+            Q(is_customer_service=True) | 
+            Q(is_cashier=True)
+        )
+    def get_permissions(self):
+        if self.action in ["get_staff_members", "get_staff_roles_summary"]:
+            permission_classes = [IsStoreManager]
+        return [permission() for permission in permission_classes]
     @action(detail=False, methods=['get'], url_path='staff-members')
     def get_staff_members(self, request):
         """
-        Retrieve all staff members who have a role assigned.
+        Retrieve staff members with advanced filtering, searching, and ordering.
+        """
+        # Construct base query for staff members
+        staff_query = self.get_queryset()
 
-        Query Parameters:
-        - role_type: (optional) The role to filter by (e.g., "store_owner").
-        - page: (optional) The page number for pagination.
-        - page_size: (optional) The number of staff members per page (default 10).
+        # Apply filters
+        staff_query = self._apply_role_filter(staff_query, request)
+        staff_query = self._apply_search_filter(staff_query, request)
+        staff_query = self._apply_ordering(staff_query, request)
 
-        Returns:
-            A paginated list of staff members with roles set to True.
+        # Paginate results
+        paginator = StaffMemberPagination()
+        page = paginator.paginate_queryset(staff_query, request)
+
+        # Serialize data using the StaffMemberSerializer
+        serializer = self.get_serializer(page, many=True)
+
+        # Prepare comprehensive response
+        response_data = self._prepare_staff_response(
+            staff_query, page, serializer.data
+        )
+
+        return Response(
+            paginator.get_paginated_response(response_data).data, 
+            status=status.HTTP_200_OK
+        )
+
+    def _apply_role_filter(self, queryset, request):
+        """
+        Apply role-based filtering to the staff query.
         """
         role_type = request.query_params.get('role_type')
         
-        # Base query for filtering staff members who have at least one role assigned
-        staff_members_query = CustomUser.objects.filter(
-            is_store_owner=True
-        ) | CustomUser.objects.filter(
-            is_store_manager=True
-        ) | CustomUser.objects.filter(
-            is_inventory_manager=True
-        ) | CustomUser.objects.filter(
-            is_sales_associate=True
-        ) | CustomUser.objects.filter(
-            is_customer_service=True
-        ) | CustomUser.objects.filter(
-            is_cashier=True
-        )
-        
-        # If a role_type is provided, filter further by the specified role
         if role_type:
-            if role_type == 'store_owner':
-                staff_members_query = staff_members_query.filter(is_store_owner=True)
-            elif role_type == 'store_manager':
-                staff_members_query = staff_members_query.filter(is_store_manager=True)
-            elif role_type == 'inventory_manager':
-                staff_members_query = staff_members_query.filter(is_inventory_manager=True)
-            elif role_type == 'sales_associate':
-                staff_members_query = staff_members_query.filter(is_sales_associate=True)
-            elif role_type == 'customer_service':
-                staff_members_query = staff_members_query.filter(is_customer_service=True)
-            elif role_type == 'cashier':
-                staff_members_query = staff_members_query.filter(is_cashier=True)
-            else:
-                return Response(
-                    {"error": f"Invalid role type: {role_type}. Valid types are: store_owner, store_manager, inventory_manager, sales_associate, customer_service, cashier."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # Paginate the results
-        paginator = self.StaffMemberPagination()
-        result_page = paginator.paginate_queryset(staff_members_query, request)
+            if role_type not in self.ROLE_MAPPING:
+                raise ValidationError({
+                    "error": f"Invalid role type. Valid types are: {', '.join(self.ROLE_MAPPING.keys())}"
+                })
+            
+            return queryset.filter(**{self.ROLE_MAPPING[role_type]: True})
         
-        # Serialize the user data
-        staff_data = [
-            {
-                "id": user.id,
-                "username": user.username,
-                "full_name": user.get_full_name(),
-                "role": user.get_role()
-            }
-            for user in result_page
+        return queryset
+
+    def _apply_search_filter(self, queryset, request):
+        """
+        Apply search filter across multiple user fields.
+        """
+        search_term = request.query_params.get('search')
+        
+        if search_term:
+            return queryset.filter(
+                Q(username__icontains=search_term) | 
+                Q(first_name__icontains=search_term) | 
+                Q(last_name__icontains=search_term) |
+                Q(email__icontains=search_term)
+            )
+        
+        return queryset
+
+    def _apply_ordering(self, queryset, request):
+        """
+        Apply custom ordering to the queryset.
+        """
+        order_by = request.query_params.get('order_by', 'id')
+        
+        # Support for multiple ordering fields
+        ordering_fields = order_by.split(',')
+        valid_fields = [
+            'id', 'username', 'first_name', 'last_name', 
+            'email', 'date_joined'
         ]
         
-        # Return the paginated response with staff members data
-        return paginator.get_paginated_response(staff_data)
+        try:
+            # Validate and apply ordering
+            safe_ordering = []
+            for field in ordering_fields:
+                clean_field = field.strip()
+                
+                # Handle potential negative (descending) ordering
+                if clean_field.startswith('-'):
+                    base_field = clean_field[1:]
+                    if base_field in valid_fields:
+                        safe_ordering.append(clean_field)
+                elif clean_field in valid_fields:
+                    safe_ordering.append(clean_field)
+            
+            return queryset.order_by(*safe_ordering) if safe_ordering else queryset
+        
+        except FieldError:
+            # Fallback to default ordering
+            return queryset.order_by('id')
+
+    def _prepare_staff_response(self, full_queryset, page_queryset, serialized_data):
+        """
+        Prepare comprehensive response with metadata.
+        """
+        return {
+            "staff_members": serialized_data,
+            "total_count": full_queryset.count(),
+            "filtered_count": len(page_queryset) if page_queryset else 0,
+            "roles_breakdown": {
+                role: full_queryset.filter(**{field: True}).count()
+                for role, field in self.ROLE_MAPPING.items()
+            }
+        }
+
+    @action(detail=False, methods=['get'], url_path='staff-roles')
+    def get_staff_roles_summary(self, request):
+        """
+        Retrieve summary of staff roles and their counts.
+        """
+        role_counts = {
+            role: CustomUser.objects.filter(**{field: True}).count()
+            for role, field in self.ROLE_MAPPING.items()
+        }
+
+        return Response({
+            "total_staff_count": sum(role_counts.values()),
+            "roles": role_counts
+        }, status=status.HTTP_200_OK)
