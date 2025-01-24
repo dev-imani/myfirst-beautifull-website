@@ -15,8 +15,7 @@ def test_user_login(setup_users):
     token = response.data["auth_token"]
     assert response.status_code == status.HTTP_200_OK
     assert "auth_token" in response.data
-    store_manager_user_id = setup_users["store_manager_user_id"]
-    inventory_manager_user_id = setup_users["inventory_manager_user_id"]
+
     response = client.post(
         reverse("users:users-assign-store-owner"),  # Note the format: viewset-name-action-name
         data={},  # Add empty data dict since it's the first store owner
@@ -24,21 +23,6 @@ def test_user_login(setup_users):
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.data["error"] == "No user IDs provided."
-    
-    #test assignment of roles by the store owner to an already existing role
-    response = client.post(
-        reverse("users:users-assign-store-manager"),  # Note the format: viewset-name-action-name
-        data={"user_ids":[inventory_manager_user_id,]}, 
-        HTTP_AUTHORIZATION=f"Token {token}"
-    )
-    assert response.status_code == status.HTTP_200_OK
-
-    response = client.get(
-        reverse("users:staff-get-staff-members"),  # Note the format: viewset-name-action-name
-        HTTP_AUTHORIZATION=f"Token {token}"
-    )
-    print(f"response data after get staff roles summary: {response.data}")
-    
 
 @pytest.mark.django_db
 def test_authorized_access(setup_users):
@@ -280,3 +264,109 @@ class TestRoleAssignments:
         )
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
+
+@pytest.mark.django_db
+class TestStaffMembers:
+    """Test suite for the shoe shop staff members API views."""
+    @pytest.fixture(autouse=True)
+    def setup(self, setup_users):
+        self.client = setup_users["client"]
+        self.store_owner_token = setup_users["store_owner_token"]
+
+        self.store_manager_token = setup_users["store_manager_token"]
+        
+        self.inventory_manager_token = setup_users["inventory_manager_token"]
+        
+        self.sales_associate_token = setup_users["sales_associate_token"]
+
+        self.customer_service_token = setup_users["customer_service_token"]
+        
+    @pytest.mark.parametrize(
+        "get_endpoint, token, expected_status",
+        [
+            # Store Owner can get all staff members
+            (
+                "staff-get-staff-members",
+                "store_owner_token",
+                status.HTTP_200_OK,
+            ),
+            # Store Manager can get all staff members
+            (
+                "staff-get-staff-members",
+                "store_manager_token",
+                status.HTTP_200_OK,
+            ),
+            # Inventory Manager can't get all staff members
+            (
+                "staff-get-staff-members",
+                "inventory_manager_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+            # Sales Associate can't get all staff members
+            (
+                "staff-get-staff-members",
+                "sales_associate_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+            # Customer Service can't get all staff members
+            (
+                "staff-get-staff-members",
+                "customer_service_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+        ],
+    )
+    def test_get_staff_members(self, get_endpoint, token, expected_status):
+        """Test retrieving staff members."""
+        token = getattr(self, token)
+        response = self.client.get(
+            reverse(f"users:{get_endpoint}"),
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status
+
+    @pytest.mark.parametrize(
+        "get_endpoint, token, expected_status",
+        [
+            # Store Owner can get all staff role summary
+            (
+                "staff-get-staff-roles-summary",
+                "store_owner_token",
+                status.HTTP_200_OK,
+            ),
+            # Store Manager can get all staff role summary
+            (
+                "staff-get-staff-roles-summary",
+                "store_manager_token",
+                status.HTTP_200_OK,
+            ),
+            # Inventory Manager can't get all staff role summary
+            (
+                "staff-get-staff-roles-summary",
+                "inventory_manager_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+            # Sales Associate can't get all staff role summary
+            (
+                "staff-get-staff-roles-summary",
+                "sales_associate_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+            # Customer Service can't get all staff role summary
+            (
+                "staff-get-staff-roles-summary",
+                "customer_service_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+        ],
+    )
+    def test_get_staff_roles_summary(self, get_endpoint, token, expected_status):
+        """Test retrieving staff roles summary."""
+        token = getattr(self, token)
+        response = self.client.get(
+            reverse(f"users:{get_endpoint}"),
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status  

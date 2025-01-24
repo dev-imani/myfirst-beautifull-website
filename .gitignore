@@ -155,4 +155,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-beautifulweb/
+Shoe-site-Backend/shoeappvenv/*

@@ -127,10 +127,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                         'field': 'is_customer_service',
                         'display_name': 'customer service'
                     },
-                    'cashier': {
-                        'field': 'is_cashier',
-                        'display_name': 'cashier'
-                    },
                     'sales_associate': {
                         'field': 'is_sales_associate',
                         'display_name': 'sales associate'
@@ -183,7 +179,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             assigned_users = []
             not_found_ids = []
             invalid_ids = []
-            error_messages = []  # To hold error messages
+            error_messages = []
             
             # Convert valid IDs to integers and filter out invalid ones
             valid_ids = []
@@ -192,11 +188,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                     user_id_int = int(user_id)
                     if user_id_int == current_user_id:
                         error_messages.append(f"Cannot assign {self.config['display_name']} role to yourself.")
-                        continue  # Skip the current user if they try to assign the role to themselves
+                        continue
                     valid_ids.append(user_id_int)
                 except ValueError:
                     invalid_ids.append(user_id)
-
+            
             if valid_ids:
                 # Efficiently fetch existing users
                 existing_users = CustomUser.objects.filter(id__in=valid_ids)
@@ -209,28 +205,32 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                         not_found_ids.append(str(user_id))
                         continue
                     
-                    if getattr(user, self.config['field']):
-                        error_messages.append(f"User {user.username} is already a {self.config['display_name']}.")
-                        invalid_ids.append(str(user_id))
-                        continue
-                    
-                    # Update user role
+                    # FULL METHOD TO CLEAR ALL ROLES
                     user._clear_all_roles()
+                    
+                    # Set the specific role
                     setattr(user, self.config['field'], True)
-                    user.save(update_fields=[self.config['field']])
+                    
+                    # Save with ALL role fields to ensure consistent update
+                    role_fields = [
+                        'is_store_owner', 'is_store_manager', 'is_inventory_manager', 
+                        'is_sales_associate', 'is_customer_service'
+                    ]
+                    user.save(update_fields=role_fields)
+                    
                     assigned_users.append(user.username)
-
+            
             # Build response messages
-            response_data = self._build_process_assignment_response__messages(assigned_users, not_found_ids, invalid_ids, error_messages)
-
+            response_data = self._build_process_assignment_response__messages(
+                assigned_users, not_found_ids, invalid_ids, error_messages
+            )
+            
             return {
                 'assigned_users': assigned_users,
                 'not_found_ids': not_found_ids,
                 'invalid_ids': invalid_ids,
                 'response_data': response_data
             }
-
-       
 
         def process_dismissals(self, current_user_id, user_ids):
             """
@@ -627,8 +627,7 @@ class StaffMemberViewSet(viewsets.ModelViewSet):
         'store_manager': 'is_store_manager',
         'inventory_manager': 'is_inventory_manager',
         'sales_associate': 'is_sales_associate',
-        'customer_service': 'is_customer_service',
-        'cashier': 'is_cashier'
+        'customer_service': 'is_customer_service'
     }
 
     def get_queryset(self):
@@ -640,8 +639,7 @@ class StaffMemberViewSet(viewsets.ModelViewSet):
             Q(is_store_manager=True) | 
             Q(is_inventory_manager=True) | 
             Q(is_sales_associate=True) | 
-            Q(is_customer_service=True) | 
-            Q(is_cashier=True)
+            Q(is_customer_service=True)
         )
     def get_permissions(self):
         if self.action in ["get_staff_members", "get_staff_roles_summary"]:
