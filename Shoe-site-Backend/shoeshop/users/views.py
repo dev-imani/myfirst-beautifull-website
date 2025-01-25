@@ -62,7 +62,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         """
         if self.action == "create":
             return CustomUserCreateSerializer
-        elif self.action in ["update", "partial_update"]:
+        elif self.action in ["update", "partial_update", "put", "patch"]:
             return CustomUserUpdateSerializer
         return CustomUserSerializer
 
@@ -85,7 +85,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         if self.action in ["list", "retrieve", "destroy"]:
             permission_classes = [IsStoreOwner| IsStoreManager]
-        elif self.action in ["update", "partial_update"]:
+        elif self.action in ["update", "partial_update", "put", "patch"]:
             permission_classes = [IsSelfProfile]
         elif self.action in [
             "assign_store_owner",
