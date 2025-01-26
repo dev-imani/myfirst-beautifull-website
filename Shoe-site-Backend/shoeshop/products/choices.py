@@ -1,4 +1,4 @@
-from django.db import models
+'''from django.db import models
 
 class ProductSizeChoices(models.TextChoices):
     """Enumeration of standard shoe sizes."""
@@ -24,4 +24,4 @@ class ProductStatusChoices(models.TextChoices):
     """Product availability status."""
     DRAFT = 'draft', 'Draft'
     PUBLISHED = 'published', 'Published'
-    ARCHIVED = 'archived', 'Archived'
+    ARCHIVED = 'archived', 'Archived'''
