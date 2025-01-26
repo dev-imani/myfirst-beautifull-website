@@ -1,4 +1,4 @@
-from django.db import models
+'''from django.db import models
 from rest_framework.exceptions import ValidationError
 from django.utils.text import slugify
 from django.utils import timezone
@@ -145,4 +145,4 @@ class ProductStock(models.Model):
         pass
 
     def __str__(self):
-        return f"{self.product.name} - Size {self.size}: {self.quantity}"
+        return f"{self.product.name} - Size {self.size}: {self.quantity}"'''
