@@ -1,4 +1,15 @@
-'''from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError
+
+def validate_category_name(value):
+    """
+    Validate category name to prevent reserved or restricted names.
+    """
+    if len(value) < 3:
+        raise ValidationError("Category name must be at least 3 characters long.")
+    if value.lower() in ['default', 'reserved']:
+        raise ValidationError(f"'{value}' is a reserved name and cannot be used.")
+
+'''
 from django.utils.translation import gettext_lazy as _
 import re
 
