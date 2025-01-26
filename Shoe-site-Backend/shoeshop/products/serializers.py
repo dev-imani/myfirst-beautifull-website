@@ -1,4 +1,4 @@
-from rest_framework import serializers
+'''from rest_framework import serializers
 from .models import Product, Brand, ProductStock
 from django.utils.text import slugify
 
@@ -51,4 +51,4 @@ class ProductSerializer(serializers.ModelSerializer):
                 quantity=stock_data['quantity']
             )
         
-        return product
+        return product'''
