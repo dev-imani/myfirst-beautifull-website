@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'phonenumber_field',
     'drf_yasg',
     'debug_toolbar',
+    'django-mptt'
 
     # Local apps
     'users',
