@@ -1,4 +1,4 @@
-from rest_framework.exceptions import ValidationError
+'''from rest_framework.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 import re
 
@@ -49,4 +49,4 @@ def validate_stock_quantity(value):
         raise ValidationError(
             _('Stock quantity cannot be negative'),
             params={'value': value}
-        )
+        )'''
