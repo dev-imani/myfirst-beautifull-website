@@ -45,10 +45,11 @@ INSTALLED_APPS = [
     'phonenumber_field',
     'drf_yasg',
     'debug_toolbar',
-    'django-mptt'
+    'mptt',
 
     # Local apps
     'users',
+    'products',
 ]
 
 MIDDLEWARE = [
