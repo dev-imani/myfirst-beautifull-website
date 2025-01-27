@@ -3,7 +3,7 @@ from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
-from products.validators import validate_category_name
+from products.validators import validate_category_name, validate_top_level_category
 from products.choices import CategoryChoices, CategoryStatusChoices
 
 
@@ -35,6 +35,7 @@ class Category(MPTTModel):
         related_name='children'
     )
     top_level_category = models.CharField(
+        unique=True,
         max_length=20,
         choices=CategoryChoices.choices,
         null=True,
@@ -46,22 +47,33 @@ class Category(MPTTModel):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def save(self, *args, **kwargs):
-         # Automatic slug generation
+    def clean(self):
+        # Validate unique top-level category
+        if self.top_level_category:
+            validate_top_level_category(self.top_level_category)
+            if Category.objects.filter(top_level_category=self.top_level_category).exists():
+                raise ValidationError(f"A category with top_level_category '{self.top_level_category}' already exists.")
+        # Validate category depth (no deeper than 3 levels)
+        if self.parent and self.parent.parent and self.parent.parent.parent:
+            raise ValidationError("Cannot create category deeper than the third level.")
+
+        # Assign slug if not already set
         if not self.slug:
-            # Generate base slug
             base_slug = slugify(self.name)
-            
-            # Handle unique slug generation
             unique_slug = base_slug
             counter = 1
-            while Category.objects.filter(slug=unique_slug).exists():
+            while Category.objects.filter(slug=unique_slug).exclude(pk=self.pk).exists():
                 unique_slug = f"{base_slug}-{counter}"
                 counter += 1
-            
             self.slug = unique_slug
+
+        # Assign order if not already set
         if not self.order:
             self.order = assign_category_order(self.parent)
+
+    def save(self, *args, **kwargs):
+        # Ensure clean() is always called before save
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
