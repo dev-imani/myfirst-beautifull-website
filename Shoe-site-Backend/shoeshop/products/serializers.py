@@ -1,5 +1,75 @@
-'''from rest_framework import serializers
-from .models import Product, Brand, ProductStock
+from rest_framework import serializers
+from products.models import Category
+class CategorySerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+    '''product_count = serializers.SerializerMethodField()'''
+
+    class Meta:
+        model = Category
+        fields = [
+            'id', 
+            'name', 
+            'slug', 
+            'description', 
+            'parent',
+            'status',
+            'order',
+            'children',
+            'product_count'
+        ]
+        read_only_fields = ['slug', 'order']
+
+    def get_children(self, obj):
+        """Get immediate children of the category"""
+        children = obj.get_children().order_by('order')
+        return CategorySerializer(
+            children, 
+            many=True,
+            context=self.context
+        ).data
+
+    '''def get_product_count(self, obj):
+        """Count products in this category and its descendants"""
+        category_and_descendants = obj.get_descendants(include_self=True)
+        return Product.objects.filter(category__in=category_and_descendants).count()'''
+
+class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = [
+            'name', 
+            'description', 
+            'parent', 
+            'status',
+            'top_level_category'
+        ]
+        extra_kwargs = {
+            'top_level_category': {'required': False},
+            'parent': {'required': False}
+        }
+
+    def validate(self, data):
+        if not data.get('parent') and not data.get('top_level_category'):
+            raise serializers.ValidationError(
+                "Either parent or top_level_category must be provided"
+            )
+        
+        if data.get('parent') and data.get('top_level_category'):
+            raise serializers.ValidationError(
+                "Cannot provide both parent and top_level_category"
+            )
+
+        # Check hierarchy depth
+        if data.get('parent'):
+            parent = data['parent']
+            if parent.parent and parent.parent.parent:
+                raise serializers.ValidationError(
+                    "Cannot create category deeper than third level"
+                )
+
+        return data
+'''
+
 from django.utils.text import slugify
 
 class BrandSerializer(serializers.ModelSerializer):
