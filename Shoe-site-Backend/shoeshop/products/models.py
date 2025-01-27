@@ -70,7 +70,7 @@ class Category(MPTTModel):
         """
         Return a formatted string of the category's children.
         """
-        children = self.get_children()
+        children = super().get_children()
         return ", ".join([child.name for child in children])
 
     def pretty_print(self):
