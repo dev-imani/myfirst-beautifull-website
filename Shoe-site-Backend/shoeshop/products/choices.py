@@ -18,6 +18,13 @@ class CategoryChoices(models.TextChoices):
     ART = 'art', 'Art'
     COLLECTIBLES = 'collectibles', 'Collectibles'
     OTHER = 'other', 'Other'
+
+class CategoryStatusChoices(models.TextChoices):
+    """Category availability status."""
+    DRAFT = 'draft', 'Draft'
+    ACTIVE = 'active', 'active'
+    INACTIVE = 'inactive', 'inactive'
+    ARCHIVED = 'archived', 'Archived'
 '''class ProductSizeChoices(models.TextChoices):
     """Enumeration of standard shoe sizes."""
     US_5 = '5', 'US 5'
