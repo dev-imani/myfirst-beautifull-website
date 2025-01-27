@@ -15,18 +15,13 @@ class CategorySerializer(serializers.ModelSerializer):
             'status',
             'order',
             'children',
-            'product_count'
+            #'product_count'
         ]
         read_only_fields = ['slug', 'order']
 
     def get_children(self, obj):
-        """Get immediate children of the category"""
-        children = obj.get_children().order_by('order')
-        return CategorySerializer(
-            children, 
-            many=True,
-            context=self.context
-        ).data
+        children = obj.children.order_by('order')
+        return CategorySerializer(children, many=True, context=self.context)
 
     '''def get_product_count(self, obj):
         """Count products in this category and its descendants"""
