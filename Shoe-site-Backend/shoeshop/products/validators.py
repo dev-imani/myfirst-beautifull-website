@@ -1,4 +1,5 @@
 from rest_framework.exceptions import ValidationError
+from products.choices import CategoryChoices
 
 def validate_category_name(value):
     """
@@ -6,58 +7,14 @@ def validate_category_name(value):
     """
     if len(value) < 3:
         raise ValidationError("Category name must be at least 3 characters long.")
-    '''if value.lower() in ['default', 'reserved']:
-        raise ValidationError(f"'{value}' is a reserved name and cannot be used.")'''
-
-'''
-from django.utils.translation import gettext_lazy as _
-import re
-
-def validate_sku(value):
-    """
-    Validate SKU format.
     
-    Args:
-        value (str): SKU to validate
-    
-    Raises:
-        ValidationError: If SKU does not meet requirements
+
+
+def validate_top_level_category(value):
     """
-    sku_pattern = r'^[A-Z]{3}-\d{4}-[A-Z]{2}$'
-    if not re.match(sku_pattern, value):
+    Validator for top_level_category to ensure it's one of the defined choices.
+    """
+    if value not in CategoryChoices.values:
         raise ValidationError(
-            _('SKU must be in format: XXX-1234-YY'),
-            params={'value': value}
+            f"Invalid top_level_category '{value}'. Available choices are: {', '.join([choice[1] for choice in CategoryChoices.choices])}."
         )
-
-def validate_positive_price(value):
-    """
-    Ensure price is positive.
-    
-    Args:
-        value (decimal): Price to validate
-    
-    Raises:
-        ValidationError: If price is not positive
-    """
-    if value <= 0:
-        raise ValidationError(
-            _('Price must be a positive number'),
-            params={'value': value}
-        )
-
-def validate_stock_quantity(value):
-    """
-    Ensure stock quantity is non-negative.
-    
-    Args:
-        value (int): Stock quantity to validate
-    
-    Raises:
-        ValidationError: If quantity is negative
-    """
-    if value < 0:
-        raise ValidationError(
-            _('Stock quantity cannot be negative'),
-            params={'value': value}
-        )'''
