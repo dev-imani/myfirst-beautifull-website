@@ -4,7 +4,7 @@ from mptt.models import MPTTModel, TreeForeignKey
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
 from products.validators import validate_category_name
-from products.choices import CategoryChoices
+from products.choices import CategoryChoices, CategoryStatusChoices
 
 
 
@@ -24,12 +24,6 @@ class Category(MPTTModel):
         updated_at (datetime): Timestamp when the category was last updated.
     """
 
-    STATUS_CHOICES = (
-        ('active', 'Active'),
-        ('inactive', 'Inactive'),
-        ('draft', 'Draft')
-    )
-
     name = models.CharField(max_length=100, unique=True, validators=[validate_category_name])
     slug = models.SlugField(max_length=120, unique=True)
     description = models.TextField(blank=True, null=True)
@@ -40,7 +34,14 @@ class Category(MPTTModel):
         blank=True, 
         related_name='children'
     )
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    top_level_category = models.CharField(
+        max_length=20,
+        choices=CategoryChoices.choices,
+        null=True,
+        blank=True,
+        help_text="Required only for top-level categories"
+    )
+    status = models.CharField(max_length=20, choices=CategoryStatusChoices, default='active')
     order = models.PositiveIntegerField(default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
