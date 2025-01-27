@@ -47,8 +47,19 @@ class Category(MPTTModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+         # Automatic slug generation
         if not self.slug:
-            self.slug = slugify(self.name)
+            # Generate base slug
+            base_slug = slugify(self.name)
+            
+            # Handle unique slug generation
+            unique_slug = base_slug
+            counter = 1
+            while Category.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            self.slug = unique_slug
         if not self.order:
             self.order = assign_category_order(self.parent)
         super().save(*args, **kwargs)
