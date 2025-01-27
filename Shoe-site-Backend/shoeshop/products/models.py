@@ -1,35 +1,12 @@
 from django.db import models
-from django.core.exceptions import ValidationError
 from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
-from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from products.utils import assign_category_order
+from products.validators import validate_category_name
+from products.choices import CategoryChoices
 
 
-def assign_category_order(parent_category=None):
-    """
-    Automatically assign a unique order value for categories based on their parent.
-
-    Args:
-        parent_category (Category, optional): The parent category object. Defaults to None.
-
-    Returns:
-        int: The next available order value for the category.
-    """
-    try:
-        if parent_category:
-            # For subcategories
-            max_order = Category.objects.filter(parent=parent_category).aggregate(
-                max_order=models.Max('order')
-            )['max_order'] or 0
-            return max_order + 1
-        else:
-            # For top-level categories
-            max_order = Category.objects.filter(parent__isnull=True).aggregate(
-                max_order=models.Max('order')
-            )['max_order'] or 0
-            return max_order + 1
-    except Exception:
-        return 1  # Fallback to 1 in case of any error
 
 
 class Category(MPTTModel):
@@ -53,47 +30,81 @@ class Category(MPTTModel):
         ('draft', 'Draft')
     )
 
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True, max_length=120)
+    name = models.CharField(max_length=100, unique=True, validators=[validate_category_name])
+    slug = models.SlugField(max_length=120, unique=True)
     description = models.TextField(blank=True, null=True)
     parent = TreeForeignKey(
-        'self',
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
+        'self', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
         related_name='children'
     )
-    status = models.CharField(
-        max_length=20, 
-        choices=STATUS_CHOICES, 
-        default='active'
-    )
-    order = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    order = models.PositiveIntegerField(default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        """
-        Override the save method to automatically generate slug and assign order.
-        """
         if not self.slug:
             self.slug = slugify(self.name)
-
         if not self.order:
             self.order = assign_category_order(self.parent)
-
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
+    
+    def get_ancestors(self):
+        """
+        Return a formatted string of the category's ancestors (parents).
+        """
+        ancestors = []
+        parent = self.parent
+        while parent:
+            ancestors.insert(0, parent.name)  # Add to the front to maintain order
+            parent = parent.parent
+        return " > ".join(ancestors) if ancestors else None
+
+    def get_children(self):
+        """
+        Return a formatted string of the category's children.
+        """
+        children = self.get_children()
+        return ", ".join([child.name for child in children])
+
+    def pretty_print(self):
+        """
+        Return a formatted printout of the category with parents and children.
+        """
+        ancestors = self.get_ancestors()
+        children = self.get_children()
+
+        result = f"Category: {self.name}\n"
+        if ancestors:
+            result += f"Parents: {ancestors}\n"
+        else:
+            result += "Parents: None\n"
+
+        result += f"Description: {self.description if self.description else 'No description'}\n"
+        result += f"Status: {self.status}\n"
+        result += f"Children: {children if children else 'No children'}"
+        return result
+    
+    @classmethod
+    def create_top_level_category(cls, category_choice):
+        """
+        Helper method to create top-level categories
+        """
+        if category_choice not in CategoryChoices.values:
+            raise ValidationError(f"Invalid category choice: {category_choice}")
+        
+        return cls.objects.create(
+            top_level_category=category_choice,
+            name=dict(CategoryChoices.choices)[category_choice]
+        )
 
     class MPTTMeta:
-        """
-        MPTT configuration for the Category model.
-
-        Attributes:
-            order_insertion_by (list): Specifies the field to order categories when inserting.
-        """
         order_insertion_by = ['order']
 
     class Meta:
