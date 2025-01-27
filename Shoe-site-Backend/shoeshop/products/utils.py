@@ -1,4 +1,3 @@
-from products.models import Category
 from django.db import models
 
 def assign_category_order(parent_category=None):
@@ -11,6 +10,7 @@ def assign_category_order(parent_category=None):
     Returns:
         int: The next available order value for the category.
     """
+    from products.models import Category
     try:
         if parent_category:
             # For subcategories
