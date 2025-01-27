@@ -1,6 +1,24 @@
-'''from django.db import models
-
-class ProductSizeChoices(models.TextChoices):
+from django.db import models
+class CategoryChoices(models.TextChoices):
+    """Enumeration of standard product categories."""
+    SHOES = 'shoes', 'Shoes'
+    CLOTHING = 'clothing', 'Clothing'
+    ACCESSORIES = 'accessories', 'Accessories'
+    ELECTRONICS = 'electronics', 'Electronics'
+    HOME = 'home', 'Home'
+    TOYS = 'toys', 'Toys'
+    BEAUTY = 'beauty', 'Beauty'
+    FOOD = 'food', 'Food'
+    BOOKS = 'books', 'Books'
+    SPORTS = 'sports', 'Sports'
+    OUTDOORS = 'outdoors', 'Outdoors'
+    AUTOMOTIVE = 'automotive', 'Automotive'
+    MUSIC = 'music', 'Music'
+    GAMES = 'games', 'Games'
+    ART = 'art', 'Art'
+    COLLECTIBLES = 'collectibles', 'Collectibles'
+    OTHER = 'other', 'Other'
+'''class ProductSizeChoices(models.TextChoices):
     """Enumeration of standard shoe sizes."""
     US_5 = '5', 'US 5'
     US_6 = '6', 'US 6'
