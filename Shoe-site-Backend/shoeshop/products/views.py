@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from django.core.exceptions import ValidationError
 from products.models import Category
-from products.serializers import CategorySerializer
+from products.serializers import CategoryCreateUpdateSerializer, CategorySerializer
 from users.permissions import IsStoreOwner, IsStoreManager, IsStoreStaff, IsInventoryManager
 class CategoryViewSet(viewsets.ModelViewSet):
     """
@@ -19,8 +19,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
     """
     
     queryset = Category.objects.all().prefetch_related('children')
-    serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
@@ -48,6 +46,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
             
         return queryset
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return CategoryCreateUpdateSerializer
+        return CategorySerializer
 
     def get_permissions(self):
         """
@@ -57,10 +59,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
             list: List of permission classes
         """
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            self.permission_classes = [IsInventoryManager]
+            permission_classes = [IsInventoryManager]
         else:
             permission_classes = [IsAuthenticatedOrReadOnly]
-
         return [permission() for permission in permission_classes]
 
     
@@ -116,7 +117,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
-            )
+            ) 
 
     def update(self, request, *args, **kwargs) -> Response:
         """
