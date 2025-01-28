@@ -64,12 +64,14 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'parent',
+            'order',
             'status',
             'top_level_category'
         ]
         extra_kwargs = {
             'top_level_category': {'required': False},
-            'parent': {'required': False}
+            'parent': {'required': False},
+            'order': {'required': False},
         }
 
     def validate(self, data):
