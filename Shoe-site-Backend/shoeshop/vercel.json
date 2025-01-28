@@ -1,0 +1,19 @@
+{
+"version": 2,
+"builds": [
+  {
+    "src": "shoeshop/wsgi.py",
+    "use": "@vercel/python"
+  }
+],
+"routes": [
+  {
+    "src": "/(.*)",
+    "dest": "shoeshop/wsgi.py"
+  }
+],
+"env": {
+  "DJANGO_SETTINGS_MODULE": "shoeshop.settings",
+  "ALLOWED_HOSTS": ".vercel.app"
+}
+}
