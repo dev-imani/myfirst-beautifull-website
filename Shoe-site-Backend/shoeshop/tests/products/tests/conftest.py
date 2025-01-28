@@ -185,12 +185,68 @@ def setup_category(setup_users):
         category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
-
+    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    
+    top_level_category_id = response.data["id"]
+    category_data = {
+        "name": "Cloth",
+        "description": "clothings for all ages",
+        "top_level_category": "clothing",
+    }
+    response = client.post(
+        reverse("products:categories-list"),  # Use -list for creating
+        category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    
+    
     if response.status_code != status.HTTP_201_CREATED:
         print(f"Error creating category: {response.data}")
         pytest.fail("Category creation failed in fixture") #fail the test if category creation fails
+    category_data = {
+        "name": "men's",
+        "description": "Shoes for men",
+        "parent": top_level_category_id,
+    }
+    response = client.post(
+        reverse("products:categories-list"),  # Use -list for creating
+        category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+
     print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    
+    category_data = {
+        "name": "women's",
+        "description": "Shoes for women",
+        "parent": top_level_category_id,
+    }
+    response = client.post(
+        reverse("products:categories-list"),  # Use -list for creating
+        category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    
+    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    
     category_id = response.data["id"]
+    category_data = {
+        "name": "boots",
+        "description": "boots for men",
+        "parent": category_id,
+    }
+    response = client.post(
+        reverse("products:categories-list"),  # Use -list for creating
+        category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+
+    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    
+    
+    
+
 
     return {
         "client": client,
