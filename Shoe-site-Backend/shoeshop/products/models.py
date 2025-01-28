@@ -35,7 +35,6 @@ class Category(MPTTModel):
         related_name='children'
     )
     top_level_category = models.CharField(
-        unique=True,
         max_length=20,
         choices=CategoryChoices.choices,
         null=True,
@@ -50,13 +49,8 @@ class Category(MPTTModel):
     def clean(self):
         # Validate unique top-level category
         if self.top_level_category:
+            self.name = dict(CategoryChoices.choices)[self.top_level_category]
             validate_top_level_category(self.top_level_category)
-            if Category.objects.filter(top_level_category=self.top_level_category).exists():
-                raise ValidationError(f"A category with top_level_category '{self.top_level_category}' already exists.")
-        # Validate category depth (no deeper than 3 levels)
-        if self.parent and self.parent.parent and self.parent.parent.parent:
-            raise ValidationError("Cannot create category deeper than the third level.")
-
         # Assign slug if not already set
         if not self.slug:
             base_slug = slugify(self.name)
