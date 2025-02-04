@@ -1,8 +1,9 @@
+from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from products.choices import CategoryChoices
 from products.models import Category
-from django.utils.text import slugify
+
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -43,12 +44,12 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def get_children(self, obj):
 
-        children = obj.children.order_by('order')
+        children = obj.get_descendants().order_by('order')
+        if children:
+            return CategorySerializer(children, many=True, context=self.context).data
+        return []
 
-        return CategorySerializer(children, many=True, context=self.context)
-
-
-    '''def get_product_count(self, obj):
+'''  def get_product_count(self, obj):
 
         """Count products in this category and its descendants"""
 
@@ -75,6 +76,9 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, data):
+        if data.get('parent') and not data.get('name'):
+            raise ValidationError("Name is required", code="required")
+        
         if data.get('top_level_category'):
             # Convert the value to lowercase for validation
             top_level_category_lower = data['top_level_category'].lower()
@@ -115,12 +119,14 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
         if not validated_data.get('parent'):
             top_level_category_lower = validated_data['top_level_category'].lower()
             validated_data['name']  = top_level_category_lower.capitalize()
-        validated_data['slug'] = slugify(validated_data['name'])
+            validated_data['slug'] = slugify(validated_data['name'])
+            
         return super().create(validated_data)
 
-    def update(self, validated_data):
+    def update(self, instance, validated_data):
         validated_data['slug'] = slugify(validated_data['name'])
-        return super().update(validated_data)
+        return super().update(instance, validated_data)
+
 '''
 
 from django.utils.text import slugify

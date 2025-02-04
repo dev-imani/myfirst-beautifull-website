@@ -24,8 +24,8 @@ class Category(MPTTModel):
         updated_at (datetime): Timestamp when the category was last updated.
     """
 
-    name = models.CharField(max_length=100, unique=True, validators=[validate_category_name])
-    slug = models.SlugField(max_length=120, unique=True)
+    name = models.CharField(max_length=100, unique=True, blank=True, validators=[validate_category_name])
+    slug = models.SlugField(max_length=120, unique=True, blank=True)
     description = models.TextField(blank=True, null=True)
     parent = TreeForeignKey(
         'self', 
@@ -67,13 +67,13 @@ class Category(MPTTModel):
 
     def save(self, *args, **kwargs):
         # Ensure clean() is always called before save
-        self.full_clean()
+        self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
     
-    def get_ancestors(self):
+    def gt_ancestors(self):
         """
         Return a formatted string of the category's ancestors (parents).
         """
@@ -84,7 +84,7 @@ class Category(MPTTModel):
             parent = parent.parent
         return " > ".join(ancestors) if ancestors else None
 
-    def get_children(self):
+    def gt_children(self):
         """
         Return a formatted string of the category's children.
         """

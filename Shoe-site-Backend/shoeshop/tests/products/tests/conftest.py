@@ -187,27 +187,15 @@ def setup_category(setup_users):
     )
     print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
     
-    top_level_category_id = response.data["id"]
-    category_data = {
-        "name": "Cloth",
-        "description": "clothings for all ages",
-        "top_level_category": "clothing",
-    }
-    response = client.post(
-        reverse("products:categories-list"),  # Use -list for creating
-        category_data,
-        HTTP_AUTHORIZATION=f"Token {token}"
-    )
-    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    
-    
+    shoes_category_id = response.data["id"]
+
     if response.status_code != status.HTTP_201_CREATED:
         print(f"Error creating category: {response.data}")
         pytest.fail("Category creation failed in fixture") #fail the test if category creation fails
     category_data = {
         "name": "men's",
         "description": "Shoes for men",
-        "parent": top_level_category_id,
+        "parent": shoes_category_id,
     }
     response = client.post(
         reverse("products:categories-list"),  # Use -list for creating
@@ -216,11 +204,11 @@ def setup_category(setup_users):
     )
 
     print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    
+    mens_shoe_category_id = response.data["id"]
     category_data = {
         "name": "women's",
         "description": "Shoes for women",
-        "parent": top_level_category_id,
+        "parent": shoes_category_id,
     }
     response = client.post(
         reverse("products:categories-list"),  # Use -list for creating
@@ -229,12 +217,12 @@ def setup_category(setup_users):
     )
     
     print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    
-    category_id = response.data["id"]
+    womens_category_id = response.data["id"]
+
     category_data = {
         "name": "boots",
         "description": "boots for men",
-        "parent": category_id,
+        "parent": womens_category_id,
     }
     response = client.post(
         reverse("products:categories-list"),  # Use -list for creating
@@ -251,5 +239,7 @@ def setup_category(setup_users):
     return {
         "client": client,
         "token": token,
-        "category_id": category_id, # return the id
+        "category_id": shoes_category_id, # return the id
+        "mens_id": mens_shoe_category_id,
+        "womens_id": womens_category_id,
     }
