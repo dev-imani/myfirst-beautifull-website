@@ -73,16 +73,11 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
             'top_level_category': {'required': False},
             'parent': {'required': False},
             'order': {'required': False},
+            'description': {'required': True}
         }
         read_only_fields = ['slug', 'order']
 
-    def __init__(self, *args, **kwargs):
-        """Make `top_level_category` required during creation and read-only during updates."""
-        super().__init__(*args, **kwargs)
-        if self.instance:  # If instance exists, it's an update
-            self.fields['top_level_category'].read_only = True
-        else:  # It's a create operation
-            self.fields['top_level_category'].required = True
+
 
     def validate(self, data):
         if data.get('parent') and not data.get('name'):
@@ -105,10 +100,17 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
                 raise ValidationError(
                     f"A category with top_level_category '{data['top_level_category']}' already exists."
                 )
-        if not data.get('parent') and not data.get('top_level_category'):
-            raise ValidationError(
-                "Either parent or top_level_category must be provided"
-            )
+        if not self.instance:  # If it's a create operation
+            if not data.get('parent') and not data.get('top_level_category'):
+                raise ValidationError(
+                    "Either parent or top_level_category must be provided"
+                )
+        else:  # If it's an update operation
+            # You can decide to allow the absence of both `parent` and `top_level_category` here
+            if data.get('parent') and data.get('top_level_category'):
+                raise ValidationError(
+                    "Cannot provide both parent and top_level_category"
+                )
 
         if data.get('parent') and data.get('top_level_category'):
             raise ValidationError(
@@ -133,7 +135,33 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        validated_data['slug'] = slugify(validated_data['name'])
+        # Prevent modification of top_level_category other that category
+        if instance.parent is None and 'name' in validated_data:
+            raise ValidationError("Top-level category name cannot be updated.")
+        if 'top_level_category' in validated_data:
+            raise ValidationError("Top-level category cannot be updated.")
+        
+        if 'name' in validated_data:
+            instance.name = validated_data['name']
+            instance.slug = slugify(instance.name)
+
+        new_parent = validated_data.get('parent')
+
+        # Check if the new parent is a valid category
+        if new_parent:
+            # Ensure the new parent is not the same category being updated
+            if new_parent == instance:
+                raise ValidationError("A category cannot be its own parent.")
+
+            # Check for any specific logic, such as ensuring the new parent isn't a top-level category
+            if new_parent.parent is None:
+                raise ValidationError("Cannot assign a top-level category a parent.")
+
+        # Update the category's parent field if provided
+        if new_parent:
+            instance.parent = new_parent
+
+        
         return super().update(instance, validated_data)
 
 '''
