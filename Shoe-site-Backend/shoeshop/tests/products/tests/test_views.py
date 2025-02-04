@@ -3,7 +3,8 @@ from django.urls import reverse
 from rest_framework import status
 from products.choices import CategoryChoices
 
-'''@pytest.mark.django_db
+
+@pytest.mark.django_db
 def test_root_category_creation(setup_category):
     """
     Test that a store owner can create a root category.
@@ -47,7 +48,7 @@ def test_get_category(setup_category):
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["id"] == category_id #add assertion for the id
-'''
+
 @pytest.mark.django_db
 class TestCategory:
     """Test suite for the shoe shop category API views."""
@@ -68,7 +69,7 @@ class TestCategory:
         self.mens_shoe_category_id = setup_category["mens_id"]
         self.womens_shoe_category_id = setup_category["womens_id"]
         self.womens_boot_category_id = setup_category["womenboots_id"]
-    '''@pytest.mark.parametrize(
+    @pytest.mark.parametrize(
         "get_endpoint, token, expected_status",
         [
             # Store Owner can get all categories
@@ -111,7 +112,7 @@ class TestCategory:
             HTTP_AUTHORIZATION=f"Token {token}"
         )
         print(f"Response data: {response.data}")
-        assert response.status_code == expected_status'''
+        assert response.status_code == expected_status
 
    
     @pytest.mark.parametrize(
@@ -171,4 +172,50 @@ class TestCategory:
         )
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
+ 
+    
+    @pytest.mark.parametrize(
+        "get_endpoint, category_id, token, expected_status",
+        [
+            #store user can't update a category
+            (
+                "categories-detail",
+                "top_level_category_id",
+                "store_user_token",
+                status.HTTP_403_FORBIDDEN,
+            ),
+
+             # Store Owner can update a category
+            (
+                "categories-detail",
+                "womens_shoe_category_id",
+                "store_owner_token",
+                status.HTTP_200_OK,
+            ),
+
+            # Store Owner can't update toplevelcategory except description field
+            (
+                "categories-detail",
+                "top_level_category_id",
+                "store_owner_token",
+                status.HTTP_400_BAD_REQUEST,
+            ),
+        ],
+    )
+    def test_update_category(self, get_endpoint, category_id, token, expected_status):
+        """Test retrieving a category."""
+        category_id = getattr(self, category_id)
+        token = getattr(self, token)
+        update_data = {
+            "name": "Updated Category Name",
+        }
+
+        response = self.client.patch(
+            reverse(f"products:{get_endpoint}", kwargs={"pk": category_id}),
+            update_data,
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        assert response.status_code == expected_status
+
+        
  
