@@ -38,7 +38,7 @@ def setup_users():
         data={},  # Add empty data dict since it's the first store owner
         HTTP_AUTHORIZATION=f"Token {store_owner_token}"
     )
-    print("response data after store owner assignment", response.data)
+    
     # Create store manager user
     store_manager_data = {
         "username": "store_manager",
@@ -54,6 +54,7 @@ def setup_users():
         "password": "testpassword",
     }
     response = client.post("/auth/users/", store_manager_data)
+   
     store_manager_user_id = response.data["id"]
     
     # Retrieve the token after login
@@ -66,7 +67,7 @@ def setup_users():
         data={"user_ids":[store_manager_user_id,]}, 
         HTTP_AUTHORIZATION=f"Token {store_owner_token}"
     )
-    print("response data after store manager assignment", response.data)
+    
     # Create inventory manager user
     inventory_manager_data = {
         "username": "inventorymanager",
@@ -85,7 +86,7 @@ def setup_users():
     inventory_manager_user_id = response.data["id"]
     # Retrieve the token after login
     response = client.post(reverse("users:login"), inventory_manager_login_data)
-    inventry_manager_token = response.data["auth_token"]
+    inventory_manager_token = response.data["auth_token"]
    
     #assign inventory manager role
     response = client.post(
@@ -93,7 +94,6 @@ def setup_users():
         data={"user_ids":[inventory_manager_user_id,]}, 
         HTTP_AUTHORIZATION=f"Token {store_manager_token}"
     )
-    print("response data after inventory manager assignment", response.data)
     
 
     # Create sales_associate user
@@ -124,8 +124,7 @@ def setup_users():
         data={"user_ids":[sales_associate_user_id,]}, 
         HTTP_AUTHORIZATION=f"Token {store_manager_token}"
     )
-    print("response data after sales associate assignment", response.data)
-    
+   
     # Create customer service user
     customer_service_data = {
         "username": "customerservice",
@@ -153,15 +152,35 @@ def setup_users():
         data={"user_ids":[customer_service_user_id,]}, 
         HTTP_AUTHORIZATION=f"Token {store_manager_token}"
     )
-    print("response data after customer service assignment", response.data)
-    
+
+    #create a user
+    store_user_data = {
+        "username": "user",
+        "email": "abc0@gmail.com",
+        "password": "testpassword",
+        "first_name": "store",
+        "last_name": "User",
+        "phone_number": "+254787654441",
+        "sex": SexChoices.MALE,
+    }
+    store_user_login_data = {
+        "email": "abc0@gmail.com",
+        "password": "testpassword",
+    }
+    response = client.post("/auth/users/", store_user_data)
+   
+    # Retrieve the token after login
+    response = client.post(reverse("users:login"), store_user_login_data)
+    store_user_token = response.data["auth_token"]
+
     return {
         "client": client,
+        "store_user_token": store_user_token,
         "store_owner_token": store_owner_token,
         "store_owner_user_id": store_owner_user_id,
         "store_manager_token": store_manager_token,
         "store_manager_user_id": store_manager_user_id,
-        "inventory_manager_token": inventry_manager_token,
+        "inventory_manager_token": inventory_manager_token,
         "inventory_manager_user_id": inventory_manager_user_id,
         "sales_associate_token": sales_associate_token,
         "sales_associate_user_id": sales_associate_user_id,
@@ -217,12 +236,12 @@ def setup_category(setup_users):
     )
     
     print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    womens_category_id = response.data["id"]
+    womens_shoe_category_id = response.data["id"]
 
     category_data = {
         "name": "boots",
-        "description": "boots for men",
-        "parent": womens_category_id,
+        "description": "boots for women",
+        "parent": womens_shoe_category_id,
     }
     response = client.post(
         reverse("products:categories-list"),  # Use -list for creating
@@ -230,16 +249,15 @@ def setup_category(setup_users):
         HTTP_AUTHORIZATION=f"Token {token}"
     )
 
-    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
+    womenboots_shoe_category_id = response.data["id"]
     
     
-    
-
-
     return {
         "client": client,
         "token": token,
-        "category_id": shoes_category_id, # return the id
+        "shoe_top_level_category_id": shoes_category_id, # return the id
         "mens_id": mens_shoe_category_id,
-        "womens_id": womens_category_id,
+        "womens_id": womens_shoe_category_id,
+        "womenboots_id": womenboots_shoe_category_id,
     }
+

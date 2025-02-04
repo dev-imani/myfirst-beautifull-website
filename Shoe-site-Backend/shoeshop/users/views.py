@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from users.choices import UserRoles
-from users.models import CustomUser, StoreOwner
+from users.models import CustomUser, StoreOwner  # Adjust the import path as necessary
 from users.permissions import (
     IsStoreOwner,
     IsStoreManager,
@@ -206,7 +206,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                         continue
                     
                     # FULL METHOD TO CLEAR ALL ROLES
-                    user._clear_all_roles()
+                    user.clear_all_roles()
                     
                     # Set the specific role
                     setattr(user, self.config['field'], True)

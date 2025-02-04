@@ -79,7 +79,10 @@ class CustomUser(AbstractUser):
         self._clear_all_roles()
         self.is_cashier = True
         self.save()
-
+    def clear_all_roles(self):
+        """Remove all roles from the user."""
+        self._clear_all_roles()
+        self.save()
     def _clear_all_roles(self):
         """Helper method to clear all role assignments."""
         self.is_store_owner = False
@@ -124,12 +127,13 @@ class CustomUser(AbstractUser):
         CustomUserValidator.validate_roles(self)
         
     def __str__(self):
-        return self.username
+        return str(f"{self.username} - ({self.email})")
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
 class StoreOwner(models.Model):
+    """Store owners model to store store owners in the system."""
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="store_owner_entry")
     created_at = models.DateTimeField(auto_now_add=True)
 

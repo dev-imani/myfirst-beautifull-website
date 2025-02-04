@@ -74,6 +74,15 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
             'parent': {'required': False},
             'order': {'required': False},
         }
+        read_only_fields = ['slug', 'order']
+
+    def __init__(self, *args, **kwargs):
+        """Make `top_level_category` required during creation and read-only during updates."""
+        super().__init__(*args, **kwargs)
+        if self.instance:  # If instance exists, it's an update
+            self.fields['top_level_category'].read_only = True
+        else:  # It's a create operation
+            self.fields['top_level_category'].required = True
 
     def validate(self, data):
         if data.get('parent') and not data.get('name'):

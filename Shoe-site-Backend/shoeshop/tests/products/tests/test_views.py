@@ -1,7 +1,6 @@
 import pytest
 from django.urls import reverse
 from rest_framework import status
-
 from products.choices import CategoryChoices
 
 '''@pytest.mark.django_db
@@ -45,7 +44,7 @@ def test_get_category(setup_category):
         url,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
-    print(f"response after get : {response.data}")
+
     assert response.status_code == status.HTTP_200_OK
     assert response.data["id"] == category_id #add assertion for the id
 '''
@@ -55,8 +54,8 @@ class TestCategory:
     @pytest.fixture(autouse=True)
     def setup(self, setup_users, setup_category):
         self.client = setup_users["client"]
+        self.store_user_token = setup_users["store_user_token"]
         self.store_owner_token = setup_users["store_owner_token"]
-
         self.store_manager_token = setup_users["store_manager_token"]
         
         self.inventory_manager_token = setup_users["inventory_manager_token"]
@@ -65,7 +64,11 @@ class TestCategory:
 
         self.customer_service_token = setup_users["customer_service_token"]
         
-    @pytest.mark.parametrize(
+        self.top_level_category_id = setup_category["shoe_top_level_category_id"]
+        self.mens_shoe_category_id = setup_category["mens_id"]
+        self.womens_shoe_category_id = setup_category["womens_id"]
+        self.womens_boot_category_id = setup_category["womenboots_id"]
+    '''@pytest.mark.parametrize(
         "get_endpoint, token, expected_status",
         [
             # Store Owner can get all categories
@@ -108,50 +111,64 @@ class TestCategory:
             HTTP_AUTHORIZATION=f"Token {token}"
         )
         print(f"Response data: {response.data}")
-        assert response.status_code == expected_status
+        assert response.status_code == expected_status'''
 
    
-    ''' @pytest.mark.parametrize(
-        "get_endpoint, token, expected_status",
+    @pytest.mark.parametrize(
+        "get_endpoint, category_id, token, expected_status",
         [
-            # Store Owner can get all staff role summary
+            #store user can get a category
             (
-                "staff-get-staff-roles-summary",
+                "categories-detail",
+                "top_level_category_id",
+                "store_user_token",
+                status.HTTP_200_OK,
+            ),
+            # Store Owner can get a category
+            (
+                "categories-detail",
+                "top_level_category_id",
                 "store_owner_token",
                 status.HTTP_200_OK,
             ),
-            # Store Manager can get all staff role summary
+            # Store Manager can get a category
             (
-                "staff-get-staff-roles-summary",
+                "categories-detail",
+                "mens_shoe_category_id",
                 "store_manager_token",
                 status.HTTP_200_OK,
             ),
-            # Inventory Manager can't get all staff role summary
+            # Inventory Manager can get a category
             (
-                "staff-get-staff-roles-summary",
+                "categories-detail",
+                "womens_shoe_category_id",
                 "inventory_manager_token",
-                status.HTTP_403_FORBIDDEN,
+                status.HTTP_200_OK,
             ),
-            # Sales Associate can't get all staff role summary
+            # Sales Associate can get a category
             (
-                "staff-get-staff-roles-summary",
+                "categories-detail",
+                "womens_boot_category_id",
                 "sales_associate_token",
-                status.HTTP_403_FORBIDDEN,
+                status.HTTP_200_OK,
             ),
-            # Customer Service can't get all staff role summary
+            # Customer Service can get a category
             (
-                "staff-get-staff-roles-summary",
+                "categories-detail",
+                "womens_boot_category_id",
                 "customer_service_token",
-                status.HTTP_403_FORBIDDEN,
+                status.HTTP_200_OK,
             ),
         ],
     )
-    def test_get_staff_roles_summary(self, get_endpoint, token, expected_status):
-        """Test retrieving staff roles summary."""
+    def test_get_category(self, get_endpoint, category_id, token, expected_status):
+        """Test retrieving a category."""
+        category_id = getattr(self, category_id)
         token = getattr(self, token)
         response = self.client.get(
-            reverse(f"users:{get_endpoint}"),
+            reverse(f"products:{get_endpoint}", kwargs={"pk": category_id}),
             HTTP_AUTHORIZATION=f"Token {token}"
         )
         print(f"Response data: {response.data}")
-        assert response.status_code == expected_status '''
+        assert response.status_code == expected_status
+ 
