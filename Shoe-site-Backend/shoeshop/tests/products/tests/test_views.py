@@ -2,6 +2,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 from products.choices import CategoryChoices
+from products.models import Category
 
 
 @pytest.mark.django_db
@@ -37,7 +38,7 @@ def test_get_category(setup_category):
     """
     client = setup_category["client"]
     token = setup_category["token"]
-    category_id = setup_category["top_level_category_id"]
+    category_id = setup_category["shoe_top_level_category_id"]
 
     url = reverse("products:categories-detail", kwargs={"pk": category_id})
 
@@ -173,7 +174,6 @@ class TestCategory:
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
  
-    
     @pytest.mark.parametrize(
         "get_endpoint, category_id, token, expected_status",
         [
@@ -200,6 +200,13 @@ class TestCategory:
                 "store_owner_token",
                 status.HTTP_400_BAD_REQUEST,
             ),
+            #inventory manager can update a category 
+            (
+                "categories-detail",
+                "womens_boot_category_id",
+                "inventory_manager_token",
+                status.HTTP_200_OK,
+            ),
         ],
     )
     def test_update_category(self, get_endpoint, category_id, token, expected_status):
@@ -208,6 +215,7 @@ class TestCategory:
         token = getattr(self, token)
         update_data = {
             "name": "Updated Category Name",
+            "parent": self.mens_shoe_category_id
         }
 
         response = self.client.patch(
@@ -215,7 +223,53 @@ class TestCategory:
             update_data,
             HTTP_AUTHORIZATION=f"Token {token}"
         )
+        print(f"response after update: {response.data}")
         assert response.status_code == expected_status
+    @pytest.mark.parametrize(
+        "get_endpoint, category_id, token, expected_status",
+        [
+            # Store User can't delete a category
+            (
+                "categories-detail",
+                "mens_shoe_category_id",
+                "store_user_token",
+                status.HTTP_403_FORBIDDEN
+            ),
 
-        
+            # Store Owner can delete a category
+            (
+                "categories-detail", 
+                "top_level_category_id",
+                "store_owner_token",
+                status.HTTP_204_NO_CONTENT),
+     
+         
+            #inventory manager can delete a category 
+            (
+                "categories-detail",
+                "womens_boot_category_id",
+                "inventory_manager_token",
+                status.HTTP_204_NO_CONTENT,
+            ),
+        ],
+    )
+    def test_delete_category(self, get_endpoint, category_id, token, expected_status):
+        """Test deleting a category."""
+        category_id = getattr(self, category_id)
+        token = getattr(self, token)
+    
+        response = self.client.delete(
+            reverse(f"products:{get_endpoint}", kwargs={"pk": category_id}),
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        print(f"response after delete: {response.data}")
+        assert response.status_code == expected_status
+        # If deleted successfully, verify it's removed from the database
+        if expected_status == status.HTTP_204_NO_CONTENT:
+            assert not Category.objects.filter(pk=category_id).exists()
+
+        if category_id == self.top_level_category_id:
+            assert not Category.objects.filter(pk=self.top_level_category_id).exists()
+            assert not Category.objects.filter(pk=self.mens_shoe_category_id).exists()
  
+
