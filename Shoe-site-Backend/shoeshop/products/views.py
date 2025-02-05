@@ -68,39 +68,93 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['GET'])
     def hierarchy(self, request) -> Response:
         """
-        Retrieve category hierarchy starting from top-level categories.
-        
-        Args:
-            request: HTTP request object containing query parameters
-                - depth: Integer specifying the maximum depth of hierarchy to return
-        
-        Returns:
-            Response: Serialized category hierarchy data
-            
-        Raises:
-            ValidationError: If depth parameter is invalid
+        Retrieve the category hierarchy starting from top-level categories.
+
+        **Args:**
+            request (Request): HTTP request object containing query parameters.
+
+        **Query Parameters:**
+            - `depth` (int, optional): The maximum depth of hierarchy to return.
+              Defaults to 1. If greater than `CATEGORY_MAX_DEPTH`, returns up to the max depth.
+
+        **Returns:**
+            Response (JSON): A serialized representation of category hierarchy.
+
+        **Raises:**
+            - `ValidationError`: If `depth` is invalid (not a positive integer).
+            - `HTTP_500_INTERNAL_SERVER_ERROR`: If any other unexpected error occurs.
+
+        **Example Request:**
+            ```
+            GET /api/categories/hierarchy/?depth=2
+            ```
+
+        **Example Response:**
+            ```json
+            [
+                {
+                    "id": 1,
+                    "name": "Electronics",
+                    "slug": "electronics",
+                    "description": "Electronics category",
+                    "parent": null,
+                    "children": [
+                        {
+                            "id": 2,
+                            "name": "Phones",
+                            "slug": "phones",
+                            "description": "Mobile phones",
+                            "parent": 1,
+                            "children": [
+                                {
+                                    "id": 3,
+                                    "name": "Smartphones",
+                                    "slug": "smartphones",
+                                    "description": "Modern smartphones",
+                                    "parent": 2,
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+            ```
         """
         try:
-            depth = int(request.query_params.get('depth', 1))
-            if depth < 1:
-                raise ValidationError("Depth must be a positive integer")
-        except ValueError:
-            return Response(
-                {"error": "Depth parameter must be an integer"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            top_level = Category.objects.filter(parent__isnull=True)
+            # Get max depth from settings, default to 3 if not set
+            max_depth = getattr(settings, "CATEGORY_MAX_DEPTH", 3)
+
+            # Parse depth from request, ensure it's a positive integer
+            requested_depth = request.query_params.get("depth", 1)
+            try:
+                depth = int(requested_depth)
+                if depth < 1:
+                    raise ValueError
+            except ValueError:
+                return Response(
+                    {"error": "Depth parameter must be a positive integer."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Ensure depth does not exceed system-defined max depth
+            depth = min(depth, max_depth)
+
+            # Get all top-level categories (parent is NULL)
+            top_level_categories = Category.objects.filter(parent__isnull=True)
+
+            # Serialize with a dynamic depth context
             serializer = CategorySerializer(
-                top_level,
+                top_level_categories,
                 many=True,
                 context={'depth': depth, 'request': request}
             )
-            return Response(serializer.data)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
         except Exception as e:
             return Response(
-                {"error": str(e)},
+                {"error": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
