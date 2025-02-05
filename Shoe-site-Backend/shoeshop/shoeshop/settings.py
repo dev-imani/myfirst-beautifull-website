@@ -187,3 +187,4 @@ DJOSER = {
     },
 }   
         
+CATEGORY_MAX_DEPTH = 5  # Change this to set max depth limit for categories
