@@ -161,7 +161,7 @@ class Category(MPTTModel):
 # models.py
 
 class Brand(models.Model):
-    """Represents a shoe brand.
+    """Represents a product brand.
         name (CharField): The name of the brand, must be unique and have a maximum length of 100 characters.
         description (TextField): A brief description of the brand, can be left blank.
         created_at (DateTimeField): The date and time when the brand was created, automatically set on creation.
