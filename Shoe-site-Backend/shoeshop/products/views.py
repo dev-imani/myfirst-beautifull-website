@@ -1,21 +1,20 @@
+from django.conf import settings
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from django.core.exceptions import ValidationError
-from products.models import Category
+from rest_framework.exceptions import ValidationError
+from products.models import Category, CategoryStatusChoices
 from products.serializers import CategoryCreateUpdateSerializer, CategorySerializer
-from users.permissions import IsStoreOwner, IsStoreManager, IsStoreStaff, IsInventoryManager
+from users.permissions import IsInventoryManager
+
 class CategoryViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing Category objects.
-    
+
     Provides CRUD operations for categories and additional endpoints for hierarchy navigation.
-    Includes prefetch_related optimization for children relationships.
-    
-    Permissions:
-    - Read operations (list, retrieve) are available to all users
-    - Write operations (create, update, delete) require authentication
+    The default GET operations return only active categories. Use a query parameter
+    (e.g. is_active=false) to retrieve inactive or all categories.
     """
     
     queryset = Category.objects.all().prefetch_related('children')
@@ -24,134 +23,119 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     
     def get_queryset(self):
-        """
-        Get the list of categories for this view.
-        
-        Implements custom filtering based on query parameters and optimizes
-        database queries using prefetch_related.
-        
+        """Returns a filtered queryset based on query parameters.
+        By default, only active categories are returned unless the query parameter 
+        `is_active` is provided (e.g., ?is_active=false or ?is_active=all).
+        Query Parameters:
+        - is_active (str, optional): Filter categories based on their active status. 
+          If not provided, only active categories are returned. If 'all', all categories 
+          are returned. If 'true' or 'false', categories are filtered based on the 
+          boolean value.
+        - parent_id (int, optional): Filter categories based on their parent ID.
         Returns:
-            QuerySet: Filtered queryset of Category objects
+        - QuerySet: A filtered queryset of categories.
         """
         queryset = super().get_queryset()
         
-        # Add custom filtering based on query parameters
+        is_active = self.request.query_params.get('is_active')
+        if is_active is None:
+            # Default: return only active categories
+            queryset = queryset.filter(status=CategoryStatusChoices.ACTIVE)
+        elif is_active.lower() != 'all':
+            # If explicitly provided, filter based on the provided boolean value.
+            queryset = queryset.filter(status=is_active.lower() == 'true' and CategoryStatusChoices.ACTIVE or CategoryStatusChoices.INACTIVE)
+            
+        # Optional filtering by parent can be done as well.
         parent_id = self.request.query_params.get('parent_id')
         if parent_id:
             queryset = queryset.filter(parent_id=parent_id)
             
-        # Filter by active status if specified
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-            
         return queryset
+
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return CategoryCreateUpdateSerializer
         return CategorySerializer
 
     def get_permissions(self):
-        """
-        Customize permissions based on action.
-        
-        Returns:
-            list: List of permission classes
-        """
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [IsInventoryManager]
         else:
             permission_classes = [IsAuthenticatedOrReadOnly]
         return [permission() for permission in permission_classes]
 
-    
+    def update(self, request, *args, **kwargs):
+        """
+        Update a category. This method also supports updating the category status.
+        
+        If the request data contains a 'status' field, the method:
+        - Checks if the new status is among the allowed choices.
+        - Compares it with the current status.
+        - If they differ, updates the status field.
+        The model's clean() method will ensure that validations are performed.
+        
+        Returns:
+            Response: Updated category data or error message.
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Check for status update in the request data.
+        if 'status' in request.data:
+            new_status = request.data['status']
+            # Validate that new_status is among allowed choices.
+            if new_status not in CategoryStatusChoices.values:
+                return Response(
+                    {"error": f"Invalid status. Allowed statuses are: {', '.join(CategoryStatusChoices.values)}."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # If the new status is different, update it.
+            if instance.status != new_status:
+                instance.status = new_status
+                try:
+                    instance.clean()  # Perform model validations.
+                except ValidationError as e:
+                    return Response({"error": e}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Proceed with normal update for other fields.
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['GET'])
     def hierarchy(self, request) -> Response:
         """
         Retrieve the category hierarchy starting from top-level categories.
-
-        **Args:**
-            request (Request): HTTP request object containing query parameters.
-
+        
         **Query Parameters:**
-            - `depth` (int, optional): The maximum depth of hierarchy to return.
-              Defaults to 1. If greater than `CATEGORY_MAX_DEPTH`, returns up to the max depth.
-
+            - depth (int, optional): The maximum depth of hierarchy to return.
+              Defaults to 1. If greater than CATEGORY_MAX_DEPTH, returns up to the max depth.
+        
         **Returns:**
             Response (JSON): A serialized representation of category hierarchy.
-
-        **Raises:**
-            - `ValidationError`: If `depth` is invalid (not a positive integer).
-            - `HTTP_500_INTERNAL_SERVER_ERROR`: If any other unexpected error occurs.
-
-        **Example Request:**
-            ```
-            GET /api/categories/hierarchy/?depth=2
-            ```
-
-        **Example Response:**
-            ```json
-            [
-                {
-                    "id": 1,
-                    "name": "Electronics",
-                    "slug": "electronics",
-                    "description": "Electronics category",
-                    "parent": null,
-                    "children": [
-                        {
-                            "id": 2,
-                            "name": "Phones",
-                            "slug": "phones",
-                            "description": "Mobile phones",
-                            "parent": 1,
-                            "children": [
-                                {
-                                    "id": 3,
-                                    "name": "Smartphones",
-                                    "slug": "smartphones",
-                                    "description": "Modern smartphones",
-                                    "parent": 2,
-                                    "children": []
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-            ```
         """
         try:
-            # Get max depth from settings, default to 3 if not set
             max_depth = getattr(settings, "CATEGORY_MAX_DEPTH", 3)
-
-            # Parse depth from request, ensure it's a positive integer
             requested_depth = request.query_params.get("depth", 1)
             try:
                 depth = int(requested_depth)
-                if depth < 1:
+                if depth < 0:
                     raise ValueError
             except ValueError:
                 return Response(
-                    {"error": "Depth parameter must be a positive integer."},
+                    {"error": "Depth parameter must be a non-negative integer."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            # Ensure depth does not exceed system-defined max depth
-            depth = min(depth, max_depth)
-
-            # Get all top-level categories (parent is NULL)
+            if depth > 0:
+                depth = min(depth, max_depth)
             top_level_categories = Category.objects.filter(parent__isnull=True)
-
-            # Serialize with a dynamic depth context
             serializer = CategorySerializer(
                 top_level_categories,
                 many=True,
                 context={'depth': depth, 'request': request}
             )
-
             return Response(serializer.data, status=status.HTTP_200_OK)
-
         except Exception as e:
             return Response(
                 {"error": f"An unexpected error occurred: {str(e)}"},
@@ -159,42 +143,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
             )
 
     def create(self, request, *args, **kwargs) -> Response:
-        """
-        Create a new category with error handling.
-        
-        Returns:
-            Response: Newly created category data or error message
-        """
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            ) 
-
-    def update(self, request, *args, **kwargs) -> Response:
-        """
-        Update a category with error handling.
-        
-        Returns:
-            Response: Updated category data or error message
-        """
-        try:
-            return super().update(request, *args, **kwargs)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, *args, **kwargs) -> Response:
-        """
-        Delete a category with error handling.
-        
-        Returns:
-            Response: Success message or error details
-        """
         try:
             instance = self.get_object()
             self.perform_destroy(instance)
@@ -203,7 +157,4 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_204_NO_CONTENT
             )
         except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
