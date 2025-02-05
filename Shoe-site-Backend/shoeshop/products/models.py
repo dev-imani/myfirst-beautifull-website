@@ -3,7 +3,7 @@ from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
-from products.validators import validate_category_name, validate_top_level_category
+from products.validators import validate_name, validate_top_level_category, validate_description
 from products.choices import CategoryChoices, CategoryStatusChoices
 
 
@@ -24,7 +24,7 @@ class Category(MPTTModel):
         updated_at (datetime): Timestamp when the category was last updated.
     """
 
-    name = models.CharField(max_length=100, unique=True, blank=True, validators=[validate_category_name])
+    name = models.CharField(max_length=100, unique=True, blank=True, validators=[validate_name])
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     description = models.TextField(blank=True, null=True)
     parent = TreeForeignKey(
@@ -128,6 +128,12 @@ class Category(MPTTModel):
     class Meta:
         verbose_name_plural = 'Categories'
         ordering = ['order']
+        indexes = [
+            models.Index(fields=['name']),  # Index for searching/filtering by name
+            models.Index(fields=['parent']), # Important for MPTT queries and retrieving children
+            models.Index(fields=['status']), # useful for filtering by status
+            models.Index(fields=['order']),  # Crucial for ordering queries
+        ]
 
 
 # Example Usage of MPTT Queries
@@ -152,7 +158,38 @@ class Category(MPTTModel):
 #
 # 5. Get root category of a category:
 #    root = sneakers.get_root()
+# models.py
 
+class Brand(models.Model):
+    """Represents a shoe brand."""
+
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    name_sort = models.CharField(max_length=100, editable=False, blank=True)
+    popularity = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        validate_name(self.name)
+        validate_description(self.description)
+
+   
+    def save(self, *args, **kwargs):
+        self.name_sort = self.name.lower()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = 'Brand'
+        verbose_name_plural = 'Brands'
+        ordering = ['name_sort']  # Case-insensitive alphabetical order
+        indexes = [
+            models.Index(fields=['created_at']),
+            models.Index(fields=['name_sort']),
+        ]
 
 
 
