@@ -214,6 +214,7 @@ class TestCategory:
         category_id = getattr(self, category_id)
         token = getattr(self, token)
         update_data = {
+            "name": "updatedname",
             "status": "inactive",
             "parent": self.mens_shoe_category_id
         }

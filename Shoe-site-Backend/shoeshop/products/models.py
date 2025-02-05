@@ -24,8 +24,8 @@ class Category(MPTTModel):
         updated_at (datetime): Timestamp when the category was last updated.
     """
 
-    name = models.CharField(max_length=100, unique=True, blank=True, validators=[validate_name])
-    slug = models.SlugField(max_length=120, unique=True, blank=True)
+    name = models.CharField(max_length=15, unique=True, blank=True, validators=[validate_name])
+    slug = models.SlugField(max_length=20, unique=True, blank=True)
     description = models.TextField(blank=True, null=True)
     parent = TreeForeignKey(
         'self', 
@@ -161,17 +161,31 @@ class Category(MPTTModel):
 # models.py
 
 class Brand(models.Model):
-    """Represents a shoe brand."""
+    """Represents a shoe brand.
+        name (CharField): The name of the brand, must be unique and have a maximum length of 100 characters.
+        description (TextField): A brief description of the brand, can be left blank.
+        created_at (DateTimeField): The date and time when the brand was created, automatically set on creation.
+        updated_at (DateTimeField): The date and time when the brand was last updated, automatically set on update.
+        name_sort (CharField): A case-insensitive version of the brand name used for sorting, not editable by users.
+        popularity (PositiveIntegerField): A measure of the brand's popularity, defaults to 0.
+    Methods:
+        __str__: Returns the string representation of the brand, which is its name.
+        clean: Validates the name and description fields.
+        save: Sets the name_sort field to a lowercase version of the name before saving the instance.
+    Meta:
+        ordering (list): Default ordering for the model instances, orders by 'name_sort' in a case-insensitive alphabetical order.
+        indexes (list): List of database indexes to be created for the model, includes indexes on 'created_at' and 'name_sort' fields.
+    """
 
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=15, unique=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    name_sort = models.CharField(max_length=100, editable=False, blank=True)
+    name_sort = models.CharField(max_length=15, editable=False, blank=True)
     popularity = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return self.name
+        return str(self.name)
 
     def clean(self):
         validate_name(self.name)
@@ -179,10 +193,21 @@ class Brand(models.Model):
 
    
     def save(self, *args, **kwargs):
-        self.name_sort = self.name.lower()
+        self.name_sort = self.name.lower() if self.name else ''
         super().save(*args, **kwargs)
 
     class Meta:
+        """
+        Meta options for the Product model.
+
+        Attributes:
+            verbose_name (str): Human-readable name for the model in singular form.
+            verbose_name_plural (str): Human-readable name for the model in plural form.
+            ordering (list): Default ordering for the model instances, in this case, 
+                             it orders by 'name_sort' in a case-insensitive alphabetical order.
+            indexes (list): List of database indexes to be created for the model. 
+                            It includes indexes on 'created_at' and 'name_sort' fields.
+        """
         verbose_name = 'Brand'
         verbose_name_plural = 'Brands'
         ordering = ['name_sort']  # Case-insensitive alphabetical order
