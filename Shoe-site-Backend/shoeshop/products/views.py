@@ -1,11 +1,14 @@
 from django.conf import settings
+import django_filters
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import ValidationError
-from products.models import Category, CategoryStatusChoices
-from products.serializers import CategoryCreateUpdateSerializer, CategorySerializer
+from products.models import Category, Brand
+from products.choices import CategoryStatusChoices
+from products.serializers import BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer
 from users.permissions import IsInventoryManager
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -158,3 +161,50 @@ class CategoryViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class BrandFilter(FilterSet):
+    """BrandFilter is a filter class for the Brand model, allowing for filtering based on the following fields:
+    - name: A case-insensitive contains filter for the brand name.
+    - popularity: A range filter for the brand's popularity.
+    - created_at: A date range filter for the brand's creation date.
+    """
+    name = django_filters.CharFilter(lookup_expr='icontains')  # Case-insensitive contains for name
+    popularity = django_filters.RangeFilter()  # Range filter for popularity
+    created_at = django_filters.DateFromToRangeFilter()  # Date range filter for created_at
+
+    class Meta:
+        """
+        Meta class for the Brand model form.
+
+        Attributes:
+            model (django.db.models.Model): The model associated with the form.
+            fields (list): The list of fields to include in the form.
+        """
+        model = Brand
+        fields = ['name', 'popularity', 'created_at']
+
+class BrandViewSet(viewsets.ModelViewSet):
+    """BrandViewSet is a view set for handling CRUD operations on the Brand model.
+
+    Attributes:
+        queryset (QuerySet): The set of Brand objects to operate on.
+        serializer_class (Serializer): The serializer class used to validate and serialize Brand objects.
+        permission_classes (list): The list of permission classes that determine access control.
+        filter_backends (list): The list of filter backends used for filtering the queryset.
+        filterset_class (FilterSet): The filter set class used for filtering the queryset.
+
+    Methods:
+        list(request, *args, **kwargs): Retrieve a list of Brand objects.
+        create(request, *args, **kwargs): Create a new Brand object.
+        retrieve(request, *args, **kwargs): Retrieve a specific Brand object by its ID.
+        update(request, *args, **kwargs): Update a specific Brand object by its ID.
+        partial_update(request, *args, **kwargs): Partially update a specific Brand object by its ID.
+        destroy(request, *args, **kwargs): Delete a specific Brand object by its ID.
+    """
+    queryset = Brand.objects.all()  # Or .order_by('-popularity') if you have a default order
+    serializer_class = BrandSerializer
+    permission_classes = [IsInventoryManager]
+
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = BrandFilter
+   
