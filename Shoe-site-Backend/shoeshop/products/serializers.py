@@ -3,7 +3,7 @@ from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from products.choices import CategoryChoices, CategoryStatusChoices
-from products.models import Category
+from products.models import Brand, Category
 
 
 
@@ -213,16 +213,30 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
             instance.parent = new_parent
 
         return super().update(instance, validated_data)
-'''
 
-from django.utils.text import slugify
 
 class BrandSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Brand model.
+
+    This serializer converts Brand model instances into JSON format and vice versa.
+    It includes the following fields:
+    - id: The unique identifier for the brand.
+    - name: The name of the brand.
+    - description: A brief description of the brand.
+    - popularity: The popularity rating of the brand.
+    """
     class Meta:
         model = Brand
-        fields = ['id', 'name', 'description']
+        fields = ['id', 'name', 'description', 'popularity']
 
-class ProductStockSerializer(serializers.ModelSerializer):
+        read_only_fields = ['id', 'popularity']
+        extra_kwargs = {
+                'name': {'required': True},
+                'description': {'required': True},
+            }
+
+'''class ProductStockSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductStock
         fields = ['size', 'quantity']
