@@ -28,6 +28,17 @@ def validate_name(self):
         raise ValidationError("Name must be at least 3 characters long.")
 
 def validate_description(self):
+    """
+    Validates the description of a product.
+
+    This method checks if the description contains any forbidden words 
+    such as "fake" or "counterfeit". It also ensures that the description 
+    does not exceed 500 characters in length.
+
+    Raises:
+        ValidationError: If the description contains forbidden words or 
+                         exceeds 500 characters.
+    """
     forbidden_words = ["fake", "counterfeit"]
     if any(word in self.description.lower() for word in forbidden_words):
         raise ValidationError("Description contains forbidden words.")
