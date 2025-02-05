@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'djoser',
+    'django_filters',
     'phonenumber_field',
     'drf_yasg',
     'debug_toolbar',
