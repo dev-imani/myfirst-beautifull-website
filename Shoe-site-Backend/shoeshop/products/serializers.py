@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -117,12 +118,21 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
                 "Cannot provide both parent and top_level_category"
             )
 
+        #Ensures the category does not exceed the maximum depth set in settings.
+        
+        max_depth = getattr(settings, "CATEGORY_MAX_DEPTH", 3)  # Default to 3 if not set
+
         if data.get('parent'):
             parent = data['parent']
-            if parent.parent and parent.parent.parent:
-                raise ValidationError(
-                    "Cannot create category deeper than third level"
-                )
+            depth = 1  # Start at 1 (since parent exists)
+            while parent:
+                parent = parent.parent
+                depth += 1
+                if depth > max_depth:
+                    raise ValidationError(
+                        f"Cannot create category deeper than {max_depth} levels."
+                    )
+
 
         return data
 
