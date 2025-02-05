@@ -4,7 +4,6 @@ from rest_framework import status
 from products.choices import CategoryChoices
 from products.models import Category
 
-
 @pytest.mark.django_db
 def test_root_category_creation(setup_category):
     """
@@ -55,6 +54,7 @@ class TestCategory:
     """Test suite for the shoe shop category API views."""
     @pytest.fixture(autouse=True)
     def setup(self, setup_users, setup_category):
+        "set up daata for tests" 
         self.client = setup_users["client"]
         self.store_user_token = setup_users["store_user_token"]
         self.store_owner_token = setup_users["store_owner_token"]
@@ -70,7 +70,7 @@ class TestCategory:
         self.mens_shoe_category_id = setup_category["mens_id"]
         self.womens_shoe_category_id = setup_category["womens_id"]
         self.womens_boot_category_id = setup_category["womenboots_id"]
-    @pytest.mark.parametrize(
+    pytest.mark.parametrize(
         "get_endpoint, token, expected_status",
         [
             # Store Owner can get all categories
@@ -214,7 +214,7 @@ class TestCategory:
         category_id = getattr(self, category_id)
         token = getattr(self, token)
         update_data = {
-            "name": "Updated Category Name",
+            "status": "inactive",
             "parent": self.mens_shoe_category_id
         }
 
@@ -271,5 +271,19 @@ class TestCategory:
         if category_id == self.top_level_category_id:
             assert not Category.objects.filter(pk=self.top_level_category_id).exists()
             assert not Category.objects.filter(pk=self.mens_shoe_category_id).exists()
- 
+    
+    @pytest.mark.parametrize("depth, expected_depth", [
+    (0, 1),  # ✅ Returntop-level
+    (1, 1),  # ✅ Return 1 level
+    (2, 2),  # ✅ Return 2 levels if available
+    (5, 5),  # ✅ returns 5 if available
+    (10, 5), # ✅ Requested 10, but only 5 canexist
+    ])
+    def test_category_hierarchy_limited_by_actual_depth(self, depth, expected_depth):
+        """Test that hierarchy returns only available depth, not exceeding existing levels."""
+        url = reverse("products:categories-hierarchy") + f"?depth={depth}"
 
+        response = self.client.get(url, HTTP_AUTHORIZATION=f"Token {self.store_owner_token}")
+        print(f"response after get: {response.data}")
+        assert response.status_code == 200
+        assert len(response.data) <= expected_depth  # Ensures max returned depth is within range

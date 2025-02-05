@@ -248,6 +248,7 @@ def setup_category(setup_users):
         category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
+    print(f"response after womens boot: {response.data}")
 
     womenboots_shoe_category_id = response.data["id"]
     
