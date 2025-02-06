@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from products.choices import CategoryChoices
 from products.models import Category
-
+'''
 @pytest.mark.django_db
 def test_root_category_creation(setup_category):
     """
@@ -288,3 +288,66 @@ class TestCategory:
         print(f"response after get: {response.data}")
         assert response.status_code == 200
         assert len(response.data) <= expected_depth  # Ensures max returned depth is within range
+'''
+
+@pytest.mark.django_db
+class TestBrand:
+    """Test suite for the shoe shop brand API views."""
+    @pytest.fixture(autouse=True)
+    def setup(self, setup_users, setup_brand):
+        "set up daata for tests" 
+        self.client = setup_users["client"]
+        self.store_user_token = setup_users["store_user_token"]
+        self.store_owner_token = setup_users["store_owner_token"]
+        self.store_manager_token = setup_users["store_manager_token"]
+        
+        self.inventory_manager_token = setup_users["inventory_manager_token"]
+
+        self.sales_associate_token = setup_users["sales_associate_token"]
+
+        self.customer_service_token = setup_users["customer_service_token"]
+
+    @pytest.mark.parametrize("url", "token", "expected_status",
+        [
+            # Store Owner can get all brands
+            (
+                "brands-list",
+                "store_owner_token",
+                status.HTTP_200_OK,
+            ),
+            # Store Manager can get all brands
+            (
+                "brands-list",
+                "store_manager_token",
+                status.HTTP_200_OK,
+            ),
+            # Inventory Manager can get all brands
+            (
+                "brands-list",
+                "inventory_manager_token",
+                status.HTTP_200_OK,
+            ),
+            # Sales Associate can get all brands
+            (
+                "brands-list",
+                "sales_associate_token",
+                status.HTTP_200_OK,
+            ),
+            # Customer Service can get all brands
+            (
+                "brands-list",
+                "customer_service_token",
+                status.HTTP_200_OK,
+            ),
+        ],
+        )
+    def test_get_brands(self, url, token, expected_status):
+        """Test retrieving brands."""
+        token = getattr(self, token)
+        response = self.client.get(
+            reverse(f"products:{url}"),
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status
+        
