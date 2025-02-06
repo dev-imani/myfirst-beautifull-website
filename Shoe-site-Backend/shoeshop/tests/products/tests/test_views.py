@@ -2,8 +2,8 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 from products.choices import CategoryChoices
-from products.models import Category
-'''
+from products.models import Brand, Category
+
 @pytest.mark.django_db
 def test_root_category_creation(setup_category):
     """
@@ -288,7 +288,7 @@ class TestCategory:
         print(f"response after get: {response.data}")
         assert response.status_code == 200
         assert len(response.data) <= expected_depth  # Ensures max returned depth is within range
-'''
+
 
 @pytest.mark.django_db
 class TestBrand:
@@ -306,7 +306,7 @@ class TestBrand:
         self.customer_service_token = setup_users["customer_service_token"]
         self.brand_id = setup_brand["brand_id"]
 
-    '''@pytest.mark.parametrize(
+    @pytest.mark.parametrize(
         "url, token, expected_status",
         [
             # Store Owner can get all brands
@@ -331,7 +331,7 @@ class TestBrand:
             HTTP_AUTHORIZATION=f"Token {token}",
         )
         print(f"Response data: {response.data}")
-        assert response.status_code == expected_status'''
+        assert response.status_code == expected_status
     
     @pytest.mark.parametrize(
         "url, token, brand_id,  expected_status",
@@ -346,7 +346,7 @@ class TestBrand:
             ("brands-detail", "sales_associate_token", "brand_id", status.HTTP_403_FORBIDDEN),
             # Customer Service can't update brands
             ("brands-detail", "customer_service_token", "brand_id", status.HTTP_403_FORBIDDEN),
-            #user can get brands
+            #user can't delete brands
             ("brands-detail", "store_user_token", "brand_id", status.HTTP_403_FORBIDDEN),
         ],
     )
@@ -364,3 +364,34 @@ class TestBrand:
         )
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
+    
+    @pytest.mark.parametrize(
+        "url, token, brand_id,  expected_status",
+        [
+            # Store Owner can delete brands
+            ("brands-detail", "store_owner_token", "brand_id", status.HTTP_204_NO_CONTENT),
+            # Store Manager can delete brands
+            ("brands-detail", "store_manager_token", "brand_id", status.HTTP_204_NO_CONTENT),
+            # Inventory Manager can delete brands
+            ("brands-detail", "inventory_manager_token", "brand_id", status.HTTP_204_NO_CONTENT),
+            # Sales Associate can't delete brands
+            ("brands-detail", "sales_associate_token", "brand_id", status.HTTP_403_FORBIDDEN),
+            # Customer Service can't delete brands
+            ("brands-detail", "customer_service_token", "brand_id", status.HTTP_403_FORBIDDEN),
+            #user can't delete brands
+            ("brands-detail", "store_user_token", "brand_id", status.HTTP_403_FORBIDDEN),
+        ],
+    )
+    def test_delete_brand(self, url, token, brand_id, expected_status):
+        """Test deleting brands."""
+        token = getattr(self, token)
+        brandid = getattr(self, brand_id)
+        response = self.client.delete(
+            reverse(f"products:{url}", kwargs={"pk": brandid}),
+            HTTP_AUTHORIZATION=f"Token {token}",
+        )
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status
+        # If deleted successfully, verify it's removed from the database
+        if expected_status == status.HTTP_200_OK:
+            assert not Brand.objects.filter(pk=brandid).exists() # pylint: disable=no-member
