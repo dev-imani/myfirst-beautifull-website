@@ -1,5 +1,5 @@
-import re
 from rest_framework.exceptions import ValidationError
+import re
 from products.choices import CategoryChoices
 
 
@@ -12,7 +12,7 @@ def validate_top_level_category(value):
         raise ValidationError(
             f"Invalid top_level_category '{value}'. Available choices are: {', '.join([choice[1] for choice in CategoryChoices.choices])}."
         )
-def validate_name(name):
+def validate_name(self):
     """
     Validates the brand name of a product.
 
@@ -22,12 +22,12 @@ def validate_name(name):
     Raises:
         ValidationError: If the name contains invalid characters or is too short.
     """
-    if not re.match("^[A-Za-z]", name):
+    if not re.match("^[A-Za-z]", self.name):
         raise ValidationError("Name can only contain letters")
-    if len(name) < 3:
+    if len(self.name) < 3:
         raise ValidationError("Name must be at least 3 characters long.")
 
-def validate_description(description):
+def validate_description(self):
     """
     Validates the description of a product.
 
@@ -40,7 +40,7 @@ def validate_description(description):
                          exceeds 500 characters.
     """
     forbidden_words = ["fake", "counterfeit"]
-    if any(word in description.lower() for word in forbidden_words):
+    if any(word in self.description.lower() for word in forbidden_words):
         raise ValidationError("Description contains forbidden words.")
-    if len(description) > 500:
+    if len(self.description) > 500:
         raise ValidationError("Description is too long, should be less than 500 characters.")
