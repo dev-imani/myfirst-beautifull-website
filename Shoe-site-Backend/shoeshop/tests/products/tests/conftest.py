@@ -262,3 +262,39 @@ def setup_category(setup_users):
         "womenboots_id": womenboots_shoe_category_id,
     }
 
+@pytest.fixture()
+def setup_brand(setup_users):
+    """
+Fixture to set up a brand for testing.
+
+This fixture depends on the `setup_users` fixture to get the client and 
+inventory manager token. It creates a brand with the provided data and 
+returns a dictionary containing the client, token, and the created brand's ID.
+
+Args:
+    setup_users (fixture): A fixture that sets up users and returns a dictionary 
+                           with a client and an inventory manager token.
+
+Returns:
+    dict: A dictionary containing the client, token, and the created brand's ID.
+"""
+    client = setup_users["client"]
+    inventory_m_token = setup_users["inventory_manager_token"]
+
+    # Create a brand
+    brand_data = {
+        "name": "Nike",
+        "description": "Nike shoes",
+    }
+
+    response = client.post(reverse("products:brands-list"),
+                           brand_data, 
+                           HTTP_AUTHORIZATION=f"Token {inventory_m_token}"
+                           )
+    print(f"response in conftest after brand creation::  f{response.data} status {response.status_code}")
+
+    return {
+        "client": client,
+        "token": inventory_m_token,
+        "brand_id": response.data["id"],
+    }
