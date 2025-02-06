@@ -81,7 +81,7 @@ class Category(MPTTModel):
         parent = self.parent
         while parent:
             ancestors.insert(0, parent.name)  # Add to the front to maintain order
-            parent = parent.parent
+            parent = parent.parent # pylint: disable=no-member
         return " > ".join(ancestors) if ancestors else None
 
     def gt_children(self):
@@ -193,7 +193,7 @@ class Brand(models.Model):
 
    
     def save(self, *args, **kwargs):
-        self.name_sort = self.name.lower() if self.name else ''
+        self.name_sort = self.name.lower() if self.name else '' # pylint: disable=no-member
         super().save(*args, **kwargs)
 
     class Meta:
