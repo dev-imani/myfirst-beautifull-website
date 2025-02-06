@@ -1,3 +1,5 @@
+from datetime import timezone
+import hashlib
 from django.db import models
 from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
@@ -216,7 +218,159 @@ class Brand(models.Model):
             models.Index(fields=['name_sort']),
         ]
 
+class ProductImage(models.Model):  # Separate model for product images
+    image = models.ImageField(upload_to='product_images/')  # Adjust upload path as needed
+    # You can add other fields related to the image if needed, e.g., alt text
+    alt_text = models.CharField(max_length=255, blank=True, null=True)
 
+    def __str__(self):
+        return self.image.name
+class BaseProduct(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+    ]
+
+    name = models.CharField(max_length=255, unique=True, validators=[validate_product_name])
+    description = models.TextField(blank=True, null=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="products")
+    category = TreeForeignKey(Category, on_delete=models.PROTECT, related_name="products")
+    sku = models.CharField(max_length=100, unique=True, editable=False, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    stock = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    images = models.ManyToManyField(ProductImage, related_name='products', blank=True) # Many-to-many to images
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+
+    def generate_sku(self):
+        """Generates a unique SKU using a hash and timestamp/UUID."""
+
+        timestamp = timezone.now().timestamp() # can use UUID: str(uuid.uuid4()).replace('-', '') if needed for absolute uniqueness
+
+        sku_string = f"{self.brand.name or 'BRD'}{self.category.name or 'CAT'}{self.name}{timestamp}" # Combine attributes and timestamp
+        hashed_sku = hashlib.md5(sku_string.encode()).hexdigest()[:15].upper()  # Hash and take first 15 characters
+
+        return hashed_sku
+
+    def clean(self):
+        if not self.sku:
+            self.sku = self.generate_sku()
+        if not self.category.parent: # pylint: disable=no-member
+            raise ValidationError({"category": "Products cannot be assigned to top-level categories."})
+        if self.images.count() > 3: # pylint: disable=no-member
+            raise ValidationError({"images": "Maximum 3 images allowed per product."})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+class ShoeProduct(BaseProduct):
+    GENDER_CHOICES = [
+        ("men", "Men"),
+        ("women", "Women"),
+        ("unisex", "Unisex"),
+    ]
+    SIZE_TYPES = [
+        ("US", "US"),
+        ("UK", "UK"),
+        ("EU", "EU"),
+    ]
+
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
+    size_type = models.CharField(max_length=5, choices=SIZE_TYPES)
+    material = models.CharField(max_length=100)
+    style = models.CharField(max_length=100)
+
+    def clean(self):
+        super().clean()
+        if not self.category.name.lower() == "shoes":
+            raise ValidationError({"category": _("Shoe products must belong to the Shoes category.")})
+
+
+class ShoeSize(models.Model): # New model for sizes
+    product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="sizes")
+    size = models.CharField(max_length=10)
+
+    class Meta:
+        unique_together = ("product", "size")
+        ordering = ["size"]
+
+    def __str__(self):
+        return str(self.size)
+
+class ShoeColor(models.Model): # New model for colors
+    product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="colors")
+    color = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='shoe_color_images/', blank=True, null=True)  # Image per color
+
+    class Meta:
+        unique_together = ("product", "color")
+        ordering = ["color"]
+
+    def __str__(self):
+        return self.color
+
+
+class ShoeVariant(models.Model):
+    product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="variants")
+    size = models.ForeignKey(ShoeSize, on_delete=models.PROTECT, related_name="variants") # ForeignKey to ShoeSize
+    color = models.ForeignKey(ShoeColor, on_delete=models.PROTECT, related_name="variants") # ForeignKey to ShoeColor
+    stock = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("product", "size", "color")
+        ordering = ["size", "color"]
+
+    def clean(self):
+        if self.stock < 0:
+            raise ValidationError({"stock": _("Stock cannot be negative.")})
+
+    def __str__(self):
+        return f"{self.product.name} - Size {self.size} - Color {self.color}"
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+class ClothingProduct(BaseProduct):
+    SIZE_CHOICES = [
+        ("XS", "Extra Small"),
+        ("S", "Small"),
+        ("M", "Medium"),
+        ("L", "Large"),
+        ("XL", "Extra Large"),
+    ]
+    material = models.CharField(max_length=100)
+    color = models.CharField(max_length=50)
+
+    def clean(self):
+        super().clean()
+        if not self.category.name.lower() == "clothing":
+            raise ValidationError({"category": _("Clothing products must belong to the Clothing category.")})
+
+class ClothingVariant(models.Model):
+    """Represents a size variation of a clothing product."""
+    product = models.ForeignKey(ClothingProduct, on_delete=models.CASCADE, related_name="variants")
+    size = models.CharField(max_length=5, choices=ClothingProduct.SIZE_CHOICES)
+    stock = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("product", "size")
+
+    def clean(self):
+        if self.stock < 0:
+            raise ValidationError({"stock": _("Stock cannot be negative.")})
+
+    def __str__(self):
+        return f"{self.product.name} - Size {self.size}"
 
 
 '''from django.db import models
