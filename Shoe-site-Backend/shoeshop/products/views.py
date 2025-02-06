@@ -201,10 +201,16 @@ class BrandViewSet(viewsets.ModelViewSet):
         partial_update(request, *args, **kwargs): Partially update a specific Brand object by its ID.
         destroy(request, *args, **kwargs): Delete a specific Brand object by its ID.
     """
-    queryset = Brand.objects.all()  # Or .order_by('-popularity') if you have a default order
+    queryset = Brand.objects.all() # pylint: disable=no-member
     serializer_class = BrandSerializer
     permission_classes = [IsInventoryManager]
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = BrandFilter
    
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [IsInventoryManager]
+        else:
+            permission_classes = [IsAuthenticatedOrReadOnly]
+        return [permission() for permission in permission_classes]
