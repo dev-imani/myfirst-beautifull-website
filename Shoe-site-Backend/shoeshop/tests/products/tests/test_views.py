@@ -293,61 +293,74 @@ class TestCategory:
 @pytest.mark.django_db
 class TestBrand:
     """Test suite for the shoe shop brand API views."""
+
     @pytest.fixture(autouse=True)
     def setup(self, setup_users, setup_brand):
-        "set up daata for tests" 
+        """Set up data for tests."""
         self.client = setup_users["client"]
         self.store_user_token = setup_users["store_user_token"]
         self.store_owner_token = setup_users["store_owner_token"]
         self.store_manager_token = setup_users["store_manager_token"]
-        
         self.inventory_manager_token = setup_users["inventory_manager_token"]
-
         self.sales_associate_token = setup_users["sales_associate_token"]
-
         self.customer_service_token = setup_users["customer_service_token"]
+        self.brand_id = setup_brand["brand_id"]
 
-    @pytest.mark.parametrize("url", "token", "expected_status",
+    '''@pytest.mark.parametrize(
+        "url, token, expected_status",
         [
             # Store Owner can get all brands
-            (
-                "brands-list",
-                "store_owner_token",
-                status.HTTP_200_OK,
-            ),
+            ("brands-list", "store_owner_token", status.HTTP_200_OK),
             # Store Manager can get all brands
-            (
-                "brands-list",
-                "store_manager_token",
-                status.HTTP_200_OK,
-            ),
+            ("brands-list", "store_manager_token", status.HTTP_200_OK),
             # Inventory Manager can get all brands
-            (
-                "brands-list",
-                "inventory_manager_token",
-                status.HTTP_200_OK,
-            ),
+            ("brands-list", "inventory_manager_token", status.HTTP_200_OK),
             # Sales Associate can get all brands
-            (
-                "brands-list",
-                "sales_associate_token",
-                status.HTTP_200_OK,
-            ),
+            ("brands-list", "sales_associate_token", status.HTTP_200_OK),
             # Customer Service can get all brands
-            (
-                "brands-list",
-                "customer_service_token",
-                status.HTTP_200_OK,
-            ),
+            ("brands-list", "customer_service_token", status.HTTP_200_OK),
+            #user can get brands
+            ("brands-list", "store_user_token", status.HTTP_200_OK),
         ],
-        )
+    )
     def test_get_brands(self, url, token, expected_status):
         """Test retrieving brands."""
         token = getattr(self, token)
         response = self.client.get(
             reverse(f"products:{url}"),
-            HTTP_AUTHORIZATION=f"Token {token}"
+            HTTP_AUTHORIZATION=f"Token {token}",
+        )
+        print(f"Response data: {response.data}")
+        assert response.status_code == expected_status'''
+    
+    @pytest.mark.parametrize(
+        "url, token, brand_id,  expected_status",
+        [
+            # Store Owner can update brands
+            ("brands-detail", "store_owner_token", "brand_id", status.HTTP_200_OK),
+            # Store Manager can update brands
+            ("brands-detail", "store_manager_token", "brand_id", status.HTTP_200_OK),
+            # Inventory Manager can update brands
+            ("brands-detail", "inventory_manager_token", "brand_id", status.HTTP_200_OK),
+            # Sales Associate can't update brands
+            ("brands-detail", "sales_associate_token", "brand_id", status.HTTP_403_FORBIDDEN),
+            # Customer Service can't update brands
+            ("brands-detail", "customer_service_token", "brand_id", status.HTTP_403_FORBIDDEN),
+            #user can get brands
+            ("brands-detail", "store_user_token", "brand_id", status.HTTP_403_FORBIDDEN),
+        ],
+    )
+    def test_update_brand(self, url, token, brand_id, expected_status):
+        """Test updating brands."""
+        token = getattr(self, token)
+        brandid = getattr(self, brand_id)
+        data = {
+            "name": "updatedname",
+        }
+        response = self.client.patch(
+            reverse(f"products:{url}", kwargs={"pk": brandid}),
+            data,
+            HTTP_AUTHORIZATION=f"Token {token}",
         )
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
-        
