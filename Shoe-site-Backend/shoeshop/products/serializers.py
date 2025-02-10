@@ -3,7 +3,7 @@ from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from products.choices import CategoryChoices, CategoryStatusChoices
-from products.models import Brand, Category
+from products.models import Brand, Category, ClothingProduct, ClothingVariant, ProductImage, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 
 
 
@@ -235,6 +235,130 @@ class BrandSerializer(serializers.ModelSerializer):
                 'name': {'required': True},
                 'description': {'required': True},
             }
+        
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image', 'alt_text']
+
+class ShoeSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShoeSize
+        fields = ['id', 'size']
+
+class ShoeColorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShoeColor
+        fields = ['id', 'color', 'image']
+
+class ShoeVariantSerializer(serializers.ModelSerializer):
+    size = ShoeSizeSerializer()
+    color = ShoeColorSerializer()
+
+    class Meta:
+        model = ShoeVariant
+        fields = ['id', 'size', 'color', 'stock']
+
+    def create(self, validated_data):
+        size_data = validated_data.pop('size')
+        color_data = validated_data.pop('color')
+        shoe_variant = ShoeVariant.objects.create(**validated_data)
+
+        size_instance = ShoeSize.objects.get(pk=size_data.get('id'))
+        color_instance = ShoeColor.objects.get(pk=color_data.get('id'))
+
+        shoe_variant.size = size_instance
+        shoe_variant.color = color_instance
+        shoe_variant.save()
+
+        return shoe_variant
+
+    def update(self, instance, validated_data):
+        size_data = validated_data.pop('size')
+        color_data = validated_data.pop('color')
+
+        size_instance = ShoeSize.objects.get(pk=size_data.get('id'))
+        color_instance = ShoeColor.objects.get(pk=color_data.get('id'))
+
+        instance.size = size_instance
+        instance.color = color_instance
+        instance.stock = validated_data.get('stock', instance.stock)
+
+        instance.save()
+
+        return instance
+
+
+class ShoeProductSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, required=False)
+    variants = ShoeVariantSerializer(many=True, read_only=True)  # Variants are read-only here
+    sizes = ShoeSizeSerializer(many=True, required=False)
+    colors = ShoeColorSerializer(many=True, required=False)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+
+    class Meta:
+        model = ShoeProduct
+        fields = [
+            'id', 'name', 'description', 'price', 'brand', 'brand_name',
+            'category', 'category_name', 'sku', 'status', 'stock',
+            'gender', 'size_type', 'material', 'style',
+            'images', 'variants', 'sizes', 'colors',
+            'created_at', 'updated_at'
+        ]
+
+    def create(self, validated_data):
+        images_data = validated_data.pop('images', [])
+        sizes_data = validated_data.pop('sizes', [])
+        colors_data = validated_data.pop('colors', [])
+
+        product = ShoeProduct.objects.create(**validated_data)
+
+        for image_data in images_data:
+            ProductImage.objects.create(product=product, **image_data) # Use create
+
+        for size_data in sizes_data:
+            ShoeSize.objects.create(product=product, **size_data)  # Use create
+
+        for color_data in colors_data:
+            ShoeColor.objects.create(product=product, **color_data)  # Use create
+
+        return product
+
+
+class ClothingVariantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClothingVariant
+        fields = ['id', 'size', 'stock']
+
+class ClothingProductSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, required=False)
+    variants = ClothingVariantSerializer(many=True, read_only=True)  # Variants are read-only here
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+
+    class Meta:
+        model = ClothingProduct
+        fields = [
+            'id', 'name', 'description', 'price', 'brand', 'brand_name',
+            'category', 'category_name', 'sku', 'status', 'stock',
+            'material', 'color', 'images', 'variants',
+            'created_at', 'updated_at'
+        ]
+
+    def create(self, validated_data):
+        images_data = validated_data.pop('images', [])
+        variants_data = validated_data.pop('variants', [])
+
+        product = ClothingProduct.objects.create(**validated_data)
+
+        for image_data in images_data:
+            ProductImage.objects.create(product=product, **image_data)  # Use create
+
+        for variant_data in variants_data:
+            ClothingVariant.objects.create(product=product, **variant_data)  # Use create
+
+        return product
 
 '''class ProductStockSerializer(serializers.ModelSerializer):
     class Meta:
