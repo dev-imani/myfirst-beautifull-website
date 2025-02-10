@@ -25,6 +25,19 @@ class CategoryStatusChoices(models.TextChoices):
     ACTIVE = 'active', 'active'
     INACTIVE = 'inactive', 'inactive'
     ARCHIVED = 'archived', 'Archived'
+
+class BaseProductStatusChoices(models.TextChoices):
+    """Base product availability status."""
+    ACTIVE = 'active', 'active'
+    INACTIVE = 'inactive', 'inactive'
+    ARCHIVED = 'archived', 'Archived'
+
+class ProductGenderChoices(models.TextChoices):
+    """gender choices for  product."""
+    MENS = 'mens', 'Mens'
+    WOMENS = 'womens', 'Womens'
+    UNISEX = 'unisex', 'Unisex'
+    
 '''class ProductSizeChoices(models.TextChoices):
     """Enumeration of standard shoe sizes."""
     US_5 = '5', 'US 5'

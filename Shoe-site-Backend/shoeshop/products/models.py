@@ -5,8 +5,8 @@ from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
-from products.validators import validate_name, validate_top_level_category, validate_description
-from products.choices import CategoryChoices, CategoryStatusChoices
+from products.validators import validate_base_product_status, validate_category_status, validate_name, validate_product_gender, validate_top_level_category, validate_description
+from products.choices import CategoryChoices, CategoryStatusChoices, BaseProductStatusChoices, ProductGenderChoices
 
 
 
@@ -49,10 +49,13 @@ class Category(MPTTModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
+        validate_category_status(self.status)
         # Validate unique top-level category
         if self.top_level_category:
-            self.name = dict(CategoryChoices.choices)[self.top_level_category]
             validate_top_level_category(self.top_level_category)
+            self.name = dict(CategoryChoices.choices)[self.top_level_category]
+            
+       
         # Assign slug if not already set
         if not self.slug:
             base_slug = slugify(self.name)
@@ -196,6 +199,7 @@ class Brand(models.Model):
    
     def save(self, *args, **kwargs):
         self.name_sort = self.name.lower() if self.name else '' # pylint: disable=no-member
+        self.clean()
         super().save(*args, **kwargs)
 
     class Meta:
@@ -219,25 +223,51 @@ class Brand(models.Model):
         ]
 
 class ProductImage(models.Model):  # Separate model for product images
+    """
+    Model representing an image associated with a product.
+
+    Attributes:
+        image (ImageField): The image file associated with the product. The file is uploaded to the 'product_images/' directory.
+        alt_text (CharField): Optional alternative text for the image, with a maximum length of 50 characters. This can be used for accessibility or SEO purposes.
+
+    Methods:
+        __str__(): Returns the name of the image file.
+    """
     image = models.ImageField(upload_to='product_images/')  # Adjust upload path as needed
     # You can add other fields related to the image if needed, e.g., alt text
-    alt_text = models.CharField(max_length=255, blank=True, null=True)
+    alt_text = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
         return self.image.name
 class BaseProduct(models.Model):
-    STATUS_CHOICES = [
-        ("active", "Active"),
-        ("inactive", "Inactive"),
-    ]
-
-    name = models.CharField(max_length=255, unique=True, validators=[validate_product_name])
+    """
+    BaseProduct is an abstract base model that defines common attributes and methods for product models.
+    Attributes:
+        name (CharField): The name of the product, must be unique.
+        description (TextField): A brief description of the product, can be blank or null.
+        price (DecimalField): The price of the product with up to 10 digits and 2 decimal places.
+        brand (ForeignKey): A foreign key to the Brand model, with a protective delete behavior.
+        category (TreeForeignKey): A foreign key to the Category model, with a protective delete behavior.
+        sku (CharField): A unique stock keeping unit, auto-generated if not provided.
+        status (CharField): The status of the product, with choices defined in BaseProductStatusChoices.
+        stock (PositiveIntegerField): The available stock quantity of the product.
+        created_at (DateTimeField): The timestamp when the product was created, auto-generated.
+        updated_at (DateTimeField): The timestamp when the product was last updated, auto-generated.
+        images (ManyToManyField): A many-to-many relationship to the ProductImage model, can be blank.
+    Methods:
+        generate_sku(): Generates a unique SKU using a hash and timestamp.
+        clean(): Validates the product attributes and generates SKU if not provided.
+        save(*args, **kwargs): Cleans the product and saves it to the database.
+        __str__(): Returns the string representation of the product name.
+    """
+  
+    name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="products")
     category = TreeForeignKey(Category, on_delete=models.PROTECT, related_name="products")
     sku = models.CharField(max_length=100, unique=True, editable=False, blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    status = models.CharField(max_length=10, choices=BaseProductStatusChoices.choices, default="active")
     stock = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -258,43 +288,44 @@ class BaseProduct(models.Model):
         return hashed_sku
 
     def clean(self):
+        validate_name(self.name)
+        validate_description(self.description)
+        validate_base_product_status(self.status)
         if not self.sku:
             self.sku = self.generate_sku()
         if not self.category.parent: # pylint: disable=no-member
             raise ValidationError({"category": "Products cannot be assigned to top-level categories."})
         if self.images.count() > 3: # pylint: disable=no-member
             raise ValidationError({"images": "Maximum 3 images allowed per product."})
-
+        
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.name
+        return str(self.name)
 
 class ShoeProduct(BaseProduct):
-    GENDER_CHOICES = [
-        ("men", "Men"),
-        ("women", "Women"),
-        ("unisex", "Unisex"),
-    ]
+
     SIZE_TYPES = [
         ("US", "US"),
         ("UK", "UK"),
         ("EU", "EU"),
     ]
 
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
+    gender = models.CharField(max_length=10, choices=ProductGenderChoices.choices)
     size_type = models.CharField(max_length=5, choices=SIZE_TYPES)
     material = models.CharField(max_length=100)
     style = models.CharField(max_length=100)
 
     def clean(self):
         super().clean()
-        if not self.category.name.lower() == "shoes":
+        validate_product_gender(self.gender)
+
+        root_category = self.category.get_root()  # Get the root node (MPTT)
+        if not root_category.is_root_node() or root_category.name.lower() != "shoes": # Check if it is a root node and the name is correct
             raise ValidationError({"category": _("Shoe products must belong to the Shoes category.")})
-
-
+        
 class ShoeSize(models.Model): # New model for sizes
     product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="sizes")
     size = models.CharField(max_length=10)
