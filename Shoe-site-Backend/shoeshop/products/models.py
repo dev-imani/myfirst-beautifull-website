@@ -264,14 +264,14 @@ class BaseProduct(models.Model):
     name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="products")
-    category = TreeForeignKey(Category, on_delete=models.PROTECT, related_name="products")
+    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="%(class)s_products")
+    category = TreeForeignKey(Category, on_delete=models.PROTECT, related_name="%(class)s_products")
     sku = models.CharField(max_length=100, unique=True, editable=False, blank=True)
     status = models.CharField(max_length=10, choices=BaseProductStatusChoices.choices, default="active")
     stock = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    images = models.ManyToManyField(ProductImage, related_name='products', blank=True) # Many-to-many to images
+    images = models.ManyToManyField(ProductImage, related_name="%(class)s_products" , blank=True) # Many-to-many to images
 
     class Meta:
         """
@@ -359,7 +359,7 @@ class ShoeSize(models.Model): # New model for sizes
 class ShoeColor(models.Model): # New model for colors
     product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="colors")
     color = models.CharField(max_length=50)
-    image = models.ImageField(upload_to='shoe_color_images/', blank=True, null=True)  # Image per color
+
 
     class Meta:
         unique_together = ("product", "color")
@@ -371,17 +371,18 @@ class ShoeColor(models.Model): # New model for colors
 
 class ShoeVariant(models.Model):
     product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="variants")
-    size = models.ForeignKey(ShoeSize, on_delete=models.PROTECT, related_name="variants") # ForeignKey to ShoeSize
-    color = models.ForeignKey(ShoeColor, on_delete=models.PROTECT, related_name="variants") # ForeignKey to ShoeColor
+    size = models.CharField(max_length=10)  # Size name directly
+    color = models.CharField(max_length=50)  # Color name directly
     stock = models.PositiveIntegerField(default=0)
 
     class Meta:
-        unique_together = ("product", "size", "color")
+        unique_together = ("product", "size", "color")  # enforce uniqueness
         ordering = ["size", "color"]
 
     def clean(self):
         if self.stock < 0:
             raise ValidationError({"stock": _("Stock cannot be negative.")})
+       
 
     def __str__(self):
         return f"{self.product.name} - Size {self.size} - Color {self.color}"
