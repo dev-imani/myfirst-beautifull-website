@@ -1,9 +1,10 @@
 from django.conf import settings
+from django.db import transaction
 from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from products.choices import CategoryChoices, CategoryStatusChoices
-from products.models import Brand, Category, ClothingProduct, ClothingVariant, ProductImage, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
+from products.choices import BaseProductStatusChoices, CategoryChoices, CategoryStatusChoices
+from products.models import BaseProduct, Brand, Category, ClothingProduct, ClothingVariant, ProductImage, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 
 
 
@@ -237,171 +238,391 @@ class BrandSerializer(serializers.ModelSerializer):
             }
         
 class ProductImageSerializer(serializers.ModelSerializer):
+    """
+    Serializer for product images.
+    
+    Fields:
+        id (int): The unique identifier for the image
+        image (str): The image file path/URL
+        alt_text (str): Alternative text for the image
+    """
     class Meta:
         model = ProductImage
         fields = ['id', 'image', 'alt_text']
 
 class ShoeSizeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for shoe sizes.
+    
+    Fields:
+        id (int): The unique identifier for the size
+        size (str): The shoe size value
+    """
     class Meta:
         model = ShoeSize
         fields = ['id', 'size']
 
 class ShoeColorSerializer(serializers.ModelSerializer):
+    """
+    Serializer for shoe colors.
+    
+    Fields:
+        id (int): The unique identifier for the color
+        color (str): The color name
+        image (str): Image representing the color
+    """
     class Meta:
         model = ShoeColor
         fields = ['id', 'color', 'image']
 
 class ShoeVariantSerializer(serializers.ModelSerializer):
-    size = ShoeSizeSerializer()
-    color = ShoeColorSerializer()
-
+    """
+    Serializer for shoe variants (combination of size and color).
+    
+    Fields:
+        id (int): The unique identifier for the variant
+        size (str): The shoe size
+        color (str): The color name
+        stock (int): Available stock for this variant
+    """
     class Meta:
         model = ShoeVariant
         fields = ['id', 'size', 'color', 'stock']
 
-    def create(self, validated_data):
-        size_data = validated_data.pop('size')
-        color_data = validated_data.pop('color')
-        shoe_variant = ShoeVariant.objects.create(**validated_data)
+    def validate(self, data):
+        """
+        Validate that the size and color combination is valid for the product.
+        
+        Args:
+            data (dict): The variant data containing size and color
 
-        size_instance = ShoeSize.objects.get(pk=size_data.get('id'))
-        color_instance = ShoeColor.objects.get(pk=color_data.get('id'))
+        Returns:
+            dict: Validated data if all checks pass
 
-        shoe_variant.size = size_instance
-        shoe_variant.color = color_instance
-        shoe_variant.save()
+        Raises:
+            ValidationError: If size or color is not available for the product
+        """
+        product = self.context.get('product')
+        if not product:
+            raise ValidationError("Product context is required for variant validation")
 
-        return shoe_variant
+        size_name = data.get('size')
+        color_name = data.get('color')
 
-    def update(self, instance, validated_data):
-        size_data = validated_data.pop('size')
-        color_data = validated_data.pop('color')
+        available_sizes = product.sizes.values_list('size', flat=True)
+        available_colors = product.colors.values_list('color', flat=True)
 
-        size_instance = ShoeSize.objects.get(pk=size_data.get('id'))
-        color_instance = ShoeColor.objects.get(pk=color_data.get('id'))
+        if size_name and size_name.lower() not in (s.lower() for s in available_sizes):
+            raise ValidationError({"size": f"Size '{size_name}' is not available for this product."})
 
-        instance.size = size_instance
-        instance.color = color_instance
-        instance.stock = validated_data.get('stock', instance.stock)
+        if color_name and color_name.lower() not in (c.lower() for c in available_colors):
+            raise ValidationError({"color": f"Color '{color_name}' is not available for this product."})
 
-        instance.save()
+        if data.get('stock', 0) < 0:
+            raise ValidationError({"stock": "Stock cannot be negative."})
 
-        return instance
+        return data
 
-
-class ShoeProductSerializer(serializers.ModelSerializer):
+class BaseProductSerializer(serializers.ModelSerializer):
+    """
+    Base serializer for all product types.
+    
+    This serializer handles common product attributes and provides basic validation
+    for fields that are shared across all product types.
+    
+    Fields:
+        id (int): The unique identifier for the product
+        name (str): Product name
+        description (str): Product description
+        price (decimal): Product price
+        brand (int): Brand ID
+        brand_name (str): Brand name (read-only)
+        category (int): Category ID
+        category_name (str): Category name (read-only)
+        sku (str): Stock Keeping Unit
+        status (str): Product status
+        stock (int): Total available stock
+        images (list): List of product images
+        created_at (datetime): Creation timestamp
+        updated_at (datetime): Last update timestamp
+    """
+    
     images = ProductImageSerializer(many=True, required=False)
-    variants = ShoeVariantSerializer(many=True, read_only=True)  # Variants are read-only here
-    sizes = ShoeSizeSerializer(many=True, required=False)
-    colors = ShoeColorSerializer(many=True, required=False)
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
 
-    class Meta:
-        model = ShoeProduct
+       class Meta:
+        model = BaseProduct
         fields = [
             'id', 'name', 'description', 'price', 'brand', 'brand_name',
             'category', 'category_name', 'sku', 'status', 'stock',
-            'gender', 'size_type', 'material', 'style',
-            'images', 'variants', 'sizes', 'colors',
-            'created_at', 'updated_at'
+            'images', 'created_at', 'updated_at'
+        ]
+        extra_kwargs = {
+            'name': {'required': True},
+            'price': {'required': True},
+            'stock': {'required': True},
+        }
+
+    def validate_price(self, value):
+        """Validate that price is positive."""
+        if value <= 0:
+            raise ValidationError("Price must be greater than zero")
+        return value
+
+    def validate_stock(self, value):
+        """Validate that stock is not negative."""
+        if value < 0:
+            raise ValidationError("Stock cannot be negative")
+        return value
+
+    def validate_status(self, value):
+        """Validate that status is one of the allowed values."""
+        if value.lower() not in (status.lower() for status in BaseProductStatusChoices.choices):
+            raise ValidationError(f"Status must be one of {', '.join(CategoryStatusChoices.values)}")
+        return value.lower()
+
+class ShoeProductSerializer(BaseProductSerializer):
+    """
+    Serializer for shoe products, extending the base product serializer.
+    
+    Additional Fields:
+        gender (str): Target gender for the shoe
+        size_type (str): Type of size system used
+        material (str): Shoe material
+        style (str): Shoe style
+        variants (list): List of size/color combinations
+        sizes (list): Available sizes
+        colors (list): Available colors
+    """
+    
+    sizes = ShoeSizeSerializer(many=True, required=False)
+    colors = ShoeColorSerializer(many=True, required=False)
+    variants = ShoeVariantSerializer(many=True, required=False)
+
+    class Meta(BaseProductSerializer.Meta):
+        model = ShoeProduct
+        fields = BaseProductSerializer.Meta.fields + [
+            'gender', 'size_type', 'material', 'style', 'variants', 'sizes', 'colors'
         ]
 
+    @transaction.atomic
     def create(self, validated_data):
-        images_data = validated_data.pop('images', [])
+        """
+        Create a new shoe product with its related objects (sizes, colors, variants).
+        
+        Args:
+            validated_data (dict): The validated data for creating the product
+
+        Returns:
+            ShoeProduct: The created shoe product instance
+        """
         sizes_data = validated_data.pop('sizes', [])
         colors_data = validated_data.pop('colors', [])
+        variants_data = validated_data.pop('variants', [])
+        images_data = validated_data.pop('images', [])
 
+        # Create the main product
         product = ShoeProduct.objects.create(**validated_data)
 
-        for image_data in images_data:
-            ProductImage.objects.create(product=product, **image_data) # Use create
-
-        for size_data in sizes_data:
-            ShoeSize.objects.create(product=product, **size_data)  # Use create
-
-        for color_data in colors_data:
-            ShoeColor.objects.create(product=product, **color_data)  # Use create
+        # Bulk create related objects
+        self._create_sizes(product, sizes_data)
+        self._create_colors(product, colors_data)
+        self._create_variants(product, variants_data)
+        self._create_images(product, images_data)
 
         return product
 
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        """
+        Update a shoe product and its related objects.
+        
+        Args:
+            instance (ShoeProduct): The existing product instance
+            validated_data (dict): The validated data for updating
+
+        Returns:
+            ShoeProduct: The updated shoe product instance
+        """
+        sizes_data = validated_data.pop('sizes', None)
+        colors_data = validated_data.pop('colors', None)
+        variants_data = validated_data.pop('variants', None)
+        images_data = validated_data.pop('images', None)
+
+        # Update main product fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update related objects if provided
+        if sizes_data is not None:
+            self._update_sizes(instance, sizes_data)
+        if colors_data is not None:
+            self._update_colors(instance, colors_data)
+        if variants_data is not None:
+            self._update_variants(instance, variants_data)
+        if images_data is not None:
+            self._update_images(instance, images_data)
+
+        return instance
+
+    def _create_sizes(self, product, sizes_data):
+        """Bulk create sizes for a product."""
+        ShoeSize.objects.bulk_create([
+            ShoeSize(product=product, **size_data)
+            for size_data in sizes_data
+        ])
+
+    def _create_colors(self, product, colors_data):
+        """Bulk create colors for a product."""
+        ShoeColor.objects.bulk_create([
+            ShoeColor(product=product, **color_data)
+            for color_data in colors_data
+        ])
+
+    def _create_variants(self, product, variants_data):
+        """Create variants with validation."""
+        for variant_data in variants_data:
+            variant_serializer = ShoeVariantSerializer(
+                data=variant_data, 
+                context={'product': product}
+            )
+            variant_serializer.is_valid(raise_exception=True)
+            variant_serializer.save(product=product)
+
+    def _create_images(self, product, images_data):
+        """Bulk create images for a product."""
+        ProductImage.objects.bulk_create([
+            ProductImage(product=product, **image_data)
+            for image_data in images_data
+        ])
+
+    def _update_sizes(self, product, sizes_data):
+        """Update sizes for a product."""
+        product.sizes.all().delete()
+        self._create_sizes(product, sizes_data)
+
+    def _update_colors(self, product, colors_data):
+        """Update colors for a product."""
+        product.colors.all().delete()
+        self._create_colors(product, colors_data)
+
+    def _update_variants(self, product, variants_data):
+        """Update variants for a product."""
+        product.variants.all().delete()
+        self._create_variants(product, variants_data)
+
+    def _update_images(self, product, images_data):
+        """Update images for a product."""
+        product.images.all().delete()
+        self._create_images(product, images_data)
 
 class ClothingVariantSerializer(serializers.ModelSerializer):
+    """
+    Serializer for clothing variants.
+    
+    Fields:
+        id (int): The unique identifier for the variant
+        size (str): The clothing size
+        stock (int): Available stock for this variant
+    """
     class Meta:
         model = ClothingVariant
         fields = ['id', 'size', 'stock']
 
-class ClothingProductSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, required=False)
-    variants = ClothingVariantSerializer(many=True, read_only=True)  # Variants are read-only here
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    def validate_stock(self, value):
+        """Validate that stock is not negative."""
+        if value < 0:
+            raise ValidationError("Stock cannot be negative")
+        return value
 
-    class Meta:
+class ClothingProductSerializer(BaseProductSerializer):
+    """
+    Serializer for clothing products, extending the base product serializer.
+    
+    Additional Fields:
+        material (str): Clothing material
+        color (str): Color of the clothing item
+        variants (list): List of size variants
+    """
+    variants = ClothingVariantSerializer(many=True, required=False)
+
+    class Meta(BaseProductSerializer.Meta):
         model = ClothingProduct
-        fields = [
-            'id', 'name', 'description', 'price', 'brand', 'brand_name',
-            'category', 'category_name', 'sku', 'status', 'stock',
-            'material', 'color', 'images', 'variants',
-            'created_at', 'updated_at'
+        fields = BaseProductSerializer.Meta.fields + [
+            'material', 'color', 'variants'
         ]
 
+    @transaction.atomic
     def create(self, validated_data):
+        """
+        Create a new clothing product with its related objects.
+        
+        Args:
+            validated_data (dict): The validated data for creating the product
+
+        Returns:
+            ClothingProduct: The created clothing product instance
+        """
         images_data = validated_data.pop('images', [])
         variants_data = validated_data.pop('variants', [])
 
         product = ClothingProduct.objects.create(**validated_data)
-
-        for image_data in images_data:
-            ProductImage.objects.create(product=product, **image_data)  # Use create
-
-        for variant_data in variants_data:
-            ClothingVariant.objects.create(product=product, **variant_data)  # Use create
+        
+        self._create_images(product, images_data)
+        self._create_variants(product, variants_data)
 
         return product
 
-'''class ProductStockSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductStock
-        fields = ['size', 'quantity']
-
-class ProductSerializer(serializers.ModelSerializer):
-    brand = BrandSerializer(read_only=True)
-    stock_sizes = ProductStockSerializer(many=True, required=False)
-
-    class Meta:
-        model = Product
-        fields = [
-            'id', 'name', 'slug', 'sku', 'brand', 
-            'description', 'price', 'color', 
-            'status', 'stock_sizes'
-        ]
-        read_only_fields = ['slug']
-
-    def create(self, validated_data):
+    @transaction.atomic
+    def update(self, instance, validated_data):
         """
-        Custom create method to handle stock sizes.
+        Update a clothing product and its related objects.
         
         Args:
-            validated_data (dict): Validated product data
-        
+            instance (ClothingProduct): The existing product instance
+            validated_data (dict): The validated data for updating
+
         Returns:
-            Product: Created product instance
+            ClothingProduct: The updated clothing product instance
         """
-        stock_sizes = self.context.get('stock_sizes', [])
-        
-        # Ensure slug is generated
-        validated_data['slug'] = slugify(validated_data.get('name', ''))
-        
-        # Create product
-        product = Product.objects.create(**validated_data)
-        
-        # Create stock entries if provided
-        for stock_data in stock_sizes:
-            ProductStock.objects.create(
-                product=product,
-                size=stock_data['size'],
-                quantity=stock_data['quantity']
-            )
-        
-        return product'''
+        images_data = validated_data.pop('images', None)
+        variants_data = validated_data.pop('variants', None)
+
+        # Update main product fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update related objects if provided
+        if images_data is not None:
+            self._update_images(instance, images_data)
+        if variants_data is not None:
+            self._update_variants(instance, variants_data)
+
+        return instance
+
+    def _create_images(self, product, images_data):
+        """Bulk create images for a product."""
+        ProductImage.objects.bulk_create([
+            ProductImage(product=product, **image_data)
+            for image_data in images_data
+        ])
+
+    def _create_variants(self, product, variants_data):
+        """Bulk create variants for a product."""
+        ClothingVariant.objects.bulk_create([
+            ClothingVariant(product=product, **variant_data)
+            for variant_data in variants_data
+        ])
+
+    def _update_images(self, product, images_data):
+        """Update images for a product."""
+        product.images.all().delete()
+        self._create_images(product, images_data)
+
+    def _update_variants(self, product, variants_data):
+        """Update variants for a product."""
+        product.variants.all().delete()
+        self._create_variants(product, variants_data)
