@@ -351,7 +351,7 @@ class BaseProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
 
-       class Meta:
+    class Meta:
         model = BaseProduct
         fields = [
             'id', 'name', 'description', 'price', 'brand', 'brand_name',
