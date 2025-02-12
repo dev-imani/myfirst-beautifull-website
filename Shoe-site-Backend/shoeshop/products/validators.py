@@ -39,7 +39,7 @@ def validate_product_gender(value):
         )
 
 
-def validate_name(self):
+def validate_name(name):
     """
     Validates the name of a product.
 
@@ -49,12 +49,12 @@ def validate_name(self):
     Raises:
         ValidationError: If the name contains invalid characters or is too short.
     """
-    if not re.match("^[A-Za-z0-9 -]+$", self.name):
+    if not re.match("^[A-Za-z0-9 -]+$", name):
         raise ValidationError("Name can only contain letters")
-    if len(self.name) < 3:
+    if len(name) < 3:
         raise ValidationError("Name must be at least 3 characters long.")
 
-def validate_description(self):
+def validate_description(description):
     """
     Validates the description of a product.
 
@@ -67,7 +67,7 @@ def validate_description(self):
                          exceeds 500 characters.
     """
     forbidden_words = ["fake", "counterfeit"]
-    if any(word in self.description.lower() for word in forbidden_words):
+    if any(word in description.lower() for word in forbidden_words):
         raise ValidationError("Description contains forbidden words.")
-    if len(self.description) > 100:
+    if len(description) > 100:
         raise ValidationError("Description is too long, should be less than 500 characters.")
