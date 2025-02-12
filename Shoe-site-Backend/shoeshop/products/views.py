@@ -1,14 +1,16 @@
 from django.conf import settings
 import django_filters
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from rest_framework.exceptions import ValidationError
-from products.models import Category, Brand
+from rest_framework.exceptions import ValidationError, NotFound, ParseError
+from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 from products.choices import CategoryStatusChoices
-from products.serializers import BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer
+from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ProductImageSerializer, ShoeProductSerializer, ShoeVariantSerializer
+from products.product_mapper import ProductMapper
 from users.permissions import IsInventoryManager
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -214,3 +216,183 @@ class BrandViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [IsAuthenticatedOrReadOnly]
         return [permission() for permission in permission_classes]
+    
+class ProductViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing products (shoes and clothing).
+    
+    Provides standard CRUD operations and additional actions for managing product attributes.
+    All nested data (variants, images, sizes, colors) can be managed through the main
+    create/update endpoints using nested serializers.
+    """
+    
+    def get_queryset(self):
+        """
+        Get the list of products filtered by category or specific product ID.
+        
+        Query Parameters:
+            category (int): Filter products by category ID
+            
+        Returns:
+            QuerySet: Filtered queryset of products
+        """
+        pk = self.kwargs.get('pk')
+        category_id = self.request.query_params.get('category')
+
+        if pk:
+            try:
+                # Try to find the product in either model
+                try:
+                    return ShoeProduct.objects.filter(pk=pk)
+                except ShoeProduct.DoesNotExist:
+                    return ClothingProduct.objects.filter(pk=pk)
+            except Exception:
+                raise NotFound({"error": "Product not found"})
+
+        if category_id:
+            try:
+                category = Category.objects.get(pk=category_id)
+                model = ProductMapper.get_model_for_category(category)
+                return model.objects.filter(category=category) if model else ShoeProduct.objects.none()
+            except Category.DoesNotExist:
+                raise NotFound({"error": "Category not found"})
+
+         # Raise an exception if no filters are provided
+        raise ParseError({"error": "A 'category' ID or a 'pk' (product ID) must be provided."})
+
+    def get_serializer_class(self):
+        category_id = self.request.query_params.get('category')
+        if category_id:
+            try:
+                category = Category.objects.get(pk=category_id)
+                return ProductMapper.get_serializer_for_category(category)
+            except Category.DoesNotExist:
+                raise NotFound({"error": "Category not found"})
+
+        if self.kwargs.get('pk'):
+            try:
+                product = self.get_object()
+                if isinstance(product, ShoeProduct):
+                    return ShoeProductSerializer
+                if isinstance(product, ClothingProduct):
+                    return ClothingProductSerializer
+            except Exception:
+                raise NotFound({"error": "Product not found"})
+
+        raise ParseError({"error": "Either 'pk' (product ID) or 'category' ID must be provided."})
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new product with all its related data (variants, images, etc.).
+        
+        The nested serializers handle the creation of related objects automatically.
+        """
+        try:
+            return super().create(request, *args, **kwargs)
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        """
+        Update a product and its related data (variants, images, etc.).
+        
+        The nested serializers handle the updating of related objects automatically.
+        """
+        try:
+            return super().update(request, *args, **kwargs)
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        """Delete a product and all its related data."""
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'])
+    def variants(self, request, pk=None):
+        """
+        Get all variants for a product.
+        
+        Returns:
+            List of variants with their details (size, color, stock)
+        """
+        product = self.get_object()
+        if isinstance(product, ShoeProduct):
+            serializer = ShoeVariantSerializer(product.variants.all(), many=True)
+        elif isinstance(product, ClothingProduct):
+            serializer = ClothingVariantSerializer(product.variants.all(), many=True)
+        else:
+            return Response({"error": "Invalid product type"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def inventory(self, request, pk=None):
+        """
+        Get inventory details for a product.
+        
+        Returns:
+            Total stock and stock by variant
+        """
+        product = self.get_object()
+        total_stock = sum(variant.stock for variant in product.variants.all())
+        variants_stock = [{
+            'id': variant.id,
+            'size': variant.size,
+            'color': variant.color if hasattr(variant, 'color') else None,
+            'stock': variant.stock
+        } for variant in product.variants.all()]
+        
+        return Response({
+            'total_stock': total_stock,
+            'variants': variants_stock
+        })
+
+    @action(detail=True, methods=['post'])
+    def update_stock(self, request, pk=None):
+        """
+        Update stock for product variants.
+        
+        Request Data:
+            variants (list): List of dictionaries with variant_id and new stock value
+            Example: [{"variant_id": 1, "stock": 10}, {"variant_id": 2, "stock": 5}]
+        """
+        try:
+            product = self.get_object()
+            variants_data = request.data.get('variants', [])
+            
+            updated_variants = []
+            with transaction.atomic():
+                for variant_data in variants_data:
+                    variant_id = variant_data.get('variant_id')
+                    new_stock = variant_data.get('stock')
+                    
+                    if variant_id is None or new_stock is None:
+                        raise ValidationError({"error": "Missing variant_id or stock"})
+                    
+                    variant = product.variants.get(id=variant_id)
+                    variant.stock = new_stock
+                    variant.save()
+                    updated_variants.append({
+                        'variant_id': variant_id,
+                        'stock': new_stock
+                    })
+                    
+            return Response({
+                'message': 'Stock updated successfully',
+                'updated_variants': updated_variants
+            })
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
