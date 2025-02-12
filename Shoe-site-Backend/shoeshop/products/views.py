@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import ValidationError, NotFound, ParseError
 from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 from products.choices import CategoryStatusChoices
-from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ProductImageSerializer, ShoeProductSerializer, ShoeVariantSerializer
+from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ShoeProductSerializer, ShoeVariantSerializer
 from products.product_mapper import ProductMapper
 from users.permissions import IsInventoryManager
 
@@ -280,6 +280,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 raise NotFound({"error": "Product not found"})
 
         raise ParseError({"error": "Either 'pk' (product ID) or 'category' ID must be provided."})
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'update_stock']:
+            permission_classes = [IsInventoryManager]
+        else:
+            permission_classes = [IsAuthenticatedOrReadOnly]
+        return [permission() for permission in permission_classes]
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
