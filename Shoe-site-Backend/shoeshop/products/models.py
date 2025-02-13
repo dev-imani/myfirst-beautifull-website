@@ -1,8 +1,9 @@
-from datetime import timezone
+from django.utils import timezone
 import hashlib
 from django.db import models
 from django.utils.text import slugify
 from mptt.models import MPTTModel, TreeForeignKey
+from django.db.models.functions import Lower
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
 from products.validators import validate_base_product_status, validate_category_status, validate_name, validate_product_gender, validate_top_level_category, validate_description
@@ -299,7 +300,7 @@ class BaseProduct(models.Model):
         """
 
 
-        timestamp = timezone.now().timestamp() # can use UUID: str(uuid.uuid4()).replace('-', '') if needed for absolute uniqueness
+        timestamp = str(int(timezone.now().timestamp()))# can use UUID: str(uuid.uuid4()).replace('-', '') if needed for absolute uniqueness
 
         sku_string = f"{self.brand.name or 'BRD'}{self.category.name or 'CAT'}{self.name}{timestamp}" # Combine attributes and timestamp
         hashed_sku = hashlib.md5(sku_string.encode()).hexdigest()[:15].upper()  # Hash and take first 15 characters
@@ -314,7 +315,8 @@ class BaseProduct(models.Model):
             self.sku = self.generate_sku()
         if not self.category.parent: # pylint: disable=no-member
             raise ValidationError({"category": "Products cannot be assigned to top-level categories."})
-        if self.images.count() > 3: # pylint: disable=no-member
+         # Only check images if the instance is saved (has a PK)
+        if self.pk and self.images.count() > 3:  
             raise ValidationError({"images": "Maximum 3 images allowed per product."})
         
     def save(self, *args, **kwargs):
@@ -336,6 +338,8 @@ class ShoeProduct(BaseProduct):
     size_type = models.CharField(max_length=5, choices=SIZE_TYPES)
     material = models.CharField(max_length=100)
     style = models.CharField(max_length=100)
+    sizes = models.ManyToManyField('ShoeSize', related_name="shoe_products", blank=True)  # ManyToManyField
+    colors = models.ManyToManyField('ShoeColor', related_name="shoe_products", blank=True) # ManyToManyField
 
     def clean(self):
         super().clean()
@@ -346,24 +350,22 @@ class ShoeProduct(BaseProduct):
             raise ValidationError({"category": _("Shoe products must belong to the Shoes category.")})
         
 class ShoeSize(models.Model): # New model for sizes
-    product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="sizes")
+    #product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="sizes")
     size = models.CharField(max_length=10)
 
     class Meta:
-        unique_together = ("product", "size")
         ordering = ["size"]
 
     def __str__(self):
         return str(self.size)
 
 class ShoeColor(models.Model): # New model for colors
-    product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="colors")
+    #product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="colors")
     color = models.CharField(max_length=50)
 
 
     class Meta:
-        unique_together = ("product", "color")
-        ordering = ["color"]
+        ordering = [Lower("color")]
 
     def __str__(self):
         return self.color
