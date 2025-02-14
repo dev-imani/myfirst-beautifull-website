@@ -193,90 +193,147 @@ def setup_category(setup_users):
     client = setup_users["client"]
     token = setup_users["inventory_manager_token"]
 
-    # Create a category
-    category_data = {
+    # --- Create Top-Level Categories ---
+    # Shoes Category
+    shoes_category_data = {
         "name": "Shoes",
         "description": "Shoes for all ages",
         "top_level_category": "shoes",
     }
-    response = client.post(
-        reverse("products:categories-list"),  # Use -list for creating
-        category_data,
+    shoes_response = client.post(
+        reverse("products:categories-list"),
+        shoes_category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
-    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    
-    shoes_category_id = response.data["id"]
+    print(f"Response in conftest after creating 'Shoes' category: {shoes_response.data} status {shoes_response.status_code}")
+    if shoes_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Shoes' category: {shoes_response.data}")
+        pytest.fail("Category 'Shoes' creation failed in fixture")
+    shoes_category_id = shoes_response.data["id"]
 
-    if response.status_code != status.HTTP_201_CREATED:
-        print(f"Error creating category: {response.data}")
-        pytest.fail("Category creation failed in fixture") #fail the test if category creation fails
-    category_data = {
-        "name": "men's",
+    # Clothing Category
+    clothing_category_data = {
+        "name": "Clothing",
+        "description": "Clothing for all styles",
+        "top_level_category": "clothing",
+    }
+    clothing_response = client.post(
+        reverse("products:categories-list"),
+        clothing_category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"Response in conftest after creating 'Clothing' category: {clothing_response.data} status {clothing_response.status_code}")
+    if clothing_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Clothing' category: {clothing_response.data}")
+        pytest.fail("Category 'Clothing' creation failed in fixture")
+    clothing_category_id = clothing_response.data["id"]
+
+    # --- Create Child Categories under Shoes ---
+    # Men's Shoes
+    mens_shoe_category_data = {
+        "name": "Men's",
         "description": "Shoes for men",
         "parent": shoes_category_id,
     }
-    response = client.post(
-        reverse("products:categories-list"),  # Use -list for creating
-        category_data,
+    mens_shoes_response = client.post(
+        reverse("products:categories-list"),
+        mens_shoe_category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
+    print(f"Response in conftest after creating 'Men's Shoes' category: {mens_shoes_response.data} status {mens_shoes_response.status_code}")
+    if mens_shoes_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Men's Shoes' category: {mens_shoes_response.data}")
+        pytest.fail("Category 'Men\'s Shoes' creation failed in fixture")
+    mens_shoe_category_id = mens_shoes_response.data["id"]
 
-    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    mens_shoe_category_id = response.data["id"]
-    category_data = {
-        "name": "women's",
+    # Women's Shoes
+    womens_shoe_category_data = {
+        "name": "Women's",
         "description": "Shoes for women",
         "parent": shoes_category_id,
     }
-    response = client.post(
-        reverse("products:categories-list"),  # Use -list for creating
-        category_data,
+    womens_shoes_response = client.post(
+        reverse("products:categories-list"),
+        womens_shoe_category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
-    
-    print(f"response in conftest after creation::  f{response.data} status {response.status_code}")
-    womens_shoe_category_id = response.data["id"]
+    print(f"Response in conftest after creating 'Women's Shoes' category: {womens_shoes_response.data} status {womens_shoes_response.status_code}")
+    if womens_shoes_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Women's Shoes' category: {womens_shoes_response.data}")
+        pytest.fail("Category 'Women\'s Shoes' creation failed in fixture")
+    womens_shoe_category_id = womens_shoes_response.data["id"]
 
-    category_data = {
-        "name": "boots",
-        "description": "boots for women",
+    # Boots under Women's Shoes (example of a deeper level)
+    womenboots_shoe_category_data = {
+        "name": "Boots",
+        "description": "Boots for women",
         "parent": womens_shoe_category_id,
     }
-    response = client.post(
-        reverse("products:categories-list"),  # Use -list for creating
-        category_data,
+    womenboots_shoes_response = client.post(
+        reverse("products:categories-list"),
+        womenboots_shoe_category_data,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
-    print(f"response after womens boot: {response.data}")
+    print(f"Response after creating 'Boots' under Women's Shoes: {womenboots_shoes_response.data} status {womenboots_shoes_response.status_code}")
+    if womenboots_shoes_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Boots' under Women's Shoes: {womenboots_shoes_response.data}")
+        pytest.fail("Category 'Boots' under Women's Shoes creation failed in fixture")
+    womenboots_shoe_category_id = womenboots_shoes_response.data["id"]
 
-    womenboots_shoe_category_id = response.data["id"]
-    
-    
+
+    # --- Create Child Categories under Clothing ---
+    # Men's Clothing
+    mens_clothing_category_data = {
+        "name": "Men'sclothing",
+        "description": "Clothing for men",
+        "parent": clothing_category_id,
+    }
+    mens_clothing_response = client.post(
+        reverse("products:categories-list"),
+        mens_clothing_category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"Response in conftest after creating 'Men's Clothing' category: {mens_clothing_response.data} status {mens_clothing_response.status_code}")
+    if mens_clothing_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Men's Clothing' category: {mens_clothing_response.data}")
+        pytest.fail("Category 'Men\'s Clothing' creation failed in fixture")
+    mens_clothing_category_id = mens_clothing_response.data["id"]
+
+    # Women's Clothing
+    womens_clothing_category_data = {
+        "name": "Women'sclothing",
+        "description": "Clothing for women",
+        "parent": clothing_category_id,
+    }
+    womens_clothing_response = client.post(
+        reverse("products:categories-list"),
+        womens_clothing_category_data,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"Response in conftest after creating 'Women's Clothing' category: {womens_clothing_response.data} status {womens_clothing_response.status_code}")
+    if womens_clothing_response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating 'Women's Clothing' category: {womens_clothing_response.data}")
+        pytest.fail("Category 'Women\'s Clothing' creation failed in fixture")
+    womens_clothing_category_id = womens_clothing_response.data["id"]
+
+
     return {
         "client": client,
         "token": token,
-        "shoe_top_level_category_id": shoes_category_id, # return the id
+        "shoe_top_level_category_id": shoes_category_id,
+        "clothing_top_level_category_id": clothing_category_id,
         "mens_id": mens_shoe_category_id,
         "womens_id": womens_shoe_category_id,
         "womenboots_id": womenboots_shoe_category_id,
+        "mens_clothing_id": mens_clothing_category_id,
+        "womens_clothing_id": womens_clothing_category_id,
     }
 
 @pytest.fixture()
 def setup_brand(setup_users):
     """
 Fixture to set up a brand for testing.
-
-This fixture depends on the `setup_users` fixture to get the client and 
-inventory manager token. It creates a brand with the provided data and 
-returns a dictionary containing the client, token, and the created brand's ID.
-
-Args:
-    setup_users (fixture): A fixture that sets up users and returns a dictionary 
-                           with a client and an inventory manager token.
-
-Returns:
-    dict: A dictionary containing the client, token, and the created brand's ID.
+(No changes needed for brand fixture)
 """
     client = setup_users["client"]
     inventory_m_token = setup_users["inventory_manager_token"]
@@ -288,32 +345,40 @@ Returns:
     }
 
     response = client.post(reverse("products:brands-list"),
-                           brand_data, 
+                           brand_data,
                            HTTP_AUTHORIZATION=f"Token {inventory_m_token}"
                            )
-    print(f"response in conftest after brand creation::  f{response.data} status {response.status_code}")
+    print(f"Response in conftest after brand creation: {response.data} status {response.status_code}")
+    if response.status_code != status.HTTP_201_CREATED:
+        print(f"Error creating brand: {response.data}")
+        pytest.fail("Brand creation failed in fixture")
 
     return {
         "client": client,
         "token": inventory_m_token,
         "brand_id": response.data["id"],
     }
-    
+
+from django.http import QueryDict
+
 @pytest.fixture()
 def setup_products(setup_users, setup_category, setup_brand):
     """
-    Fixture to set up products for testing.
+    Fixture to set up ShoeProduct and ClothingProduct using separate requests
+    per category. Returns a dictionary containing lists of product IDs for each type.
     """
     client = setup_users["client"]
-    brand = setup_brand["brand_id"]
+    brand_id = setup_brand["brand_id"]
     inventory_m_token = setup_users["inventory_manager_token"]
     mens_id = setup_category["mens_id"]
     womens_id = setup_category["womens_id"]
-    product_data_list = [
+    womenscloth_id = setup_category["womens_clothing_id"]
+
+    shoe_data_list = [
         {
             "name": "Running Shoe Mens Bulk",
             "description": "Men's shoe for bulk running",
-            "brand": brand,
+            "brand": brand_id,
             "category": mens_id,
             "stock": 25,
             "price": 99.99,
@@ -335,52 +400,105 @@ def setup_products(setup_users, setup_category, setup_brand):
             ]
         },
         {
-            "name": "Running Shoe Womens Bulk",
-            "description": "Womens shoe for bulk running",
-            "brand": brand, # Use brand_id here
-            "category": womens_id, # Use womens_id here to create product in a different category
-            "stock": 30,
-            "price": 110.50,
-            "gender": "womens",
-            "material": "mesh",
-            "size_type": "EU",
+            "name": "Another Running Shoe Mens Bulk",
+            "description": "Another men's shoe for running in bulk",
+            "brand": brand_id,
+            "category": mens_id, # Same mens_id for shoes
+            "stock": 20,
+            "price": 120.00,
+            "gender": "mens",
+            "material": "synthetic",
+            "size_type": "US",
             "style": "Sporty",
             "sizes": [
-                {"size": "38"},
-                {"size": "39"}
+                {"size": "41"},
+                {"size": "42"}
             ],
             "colors": [
-                {"color": "pink"},
-                {"color": "gray"}
+                {"color": "black"},
+                {"color": "white"}
             ],
             "variants": [
-                {"size": "38", "color": "pink", "stock": 12},
-                {"size": "39", "color": "gray", "stock": 18}
+                {"size": "41", "color": "black", "stock": 8},
+                {"size": "42", "color": "white", "stock": 12}
             ]
         },
-        # You can add more product dictionaries here if needed for more bulk creation
     ]
-    from django.http import QueryDict
 
-    url = reverse("products:products-list")
-    query_params = QueryDict(mutable=True)
-    query_params['category'] = mens_id  # Or a relevant category, it might not be necessary for bulk create, adjust if needed by your API design
-    url_with_params = url + "?" + query_params.urlencode()
+    clothing_data_list = [
+        {
+            "name": "TShirt Womens Bulk",
+            "description": "Womens t-shirt for casual wear in bulk",
+            "brand": brand_id,
+            "category": womenscloth_id,
+            "stock": 50,
+            "price": 24.99,
+            "material": "cotton",
+            "color": "white",
+            "variants": [
+                {"size": "S", "stock": 20},
+                {"size": "M", "stock": 30}
+            ]
+        },
+        {
+            "name": "Jeans Womens Bulk",
+            "description": "Womens jeans for everyday wear in bulk",
+            "brand": brand_id,
+            "category": womenscloth_id, # Using womens_id for clothing
+            "stock": 40,
+            "price": 59.50,
+            "material": "denim",
+            "color": "blue",
+            "variants": [
+                {"size": "S", "stock": 15},
+                {"size": "M", "stock": 25}
+            ]
+        },
+    ]
 
-    response = client.post(
-        url_with_params,
-        product_data_list, # Now post the list of product data
+    shoe_url = reverse("products:products-list")
+    shoe_query_params = QueryDict(mutable=True)
+    shoe_query_params['category'] = mens_id # Category for shoes
+    shoe_url_with_params = shoe_url + "?" + shoe_query_params.urlencode()
+
+    clothing_url = reverse("products:products-list") # Same URL endpoint
+    clothing_query_params = QueryDict(mutable=True)
+    clothing_query_params['category'] = womenscloth_id # Category for clothing
+    clothing_url_with_params = clothing_url + "?" + clothing_query_params.urlencode()
+
+
+    # --- Make Separate POST requests ---
+    shoe_response = client.post(
+        shoe_url_with_params,
+        shoe_data_list,
         HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
         format="json",
     )
 
-    print(f"Response in conftest after bulk product creation: {response.data}")
-    assert response.status_code == status.HTTP_201_CREATED
-    assert isinstance(response.data, list) # Assert response data is a list
-    assert len(response.data) == len(product_data_list) # Assert number of created products matches input
+    clothing_response = client.post(
+        clothing_url_with_params,
+        clothing_data_list,
+        HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
+        format="json",
+    )
 
-    product_ids = [product_response['id'] for product_response in response.data] # Extract product IDs from the list of responses
+    print(f"Shoe Create Response in conftest: {shoe_response.data}")
+    print(f"Clothing Create Response in conftest: {clothing_response.data}")
+
+    assert shoe_response.status_code == status.HTTP_201_CREATED
+    assert isinstance(shoe_response.data, list)
+    assert len(shoe_response.data) == len(shoe_data_list)
+
+    assert clothing_response.status_code == status.HTTP_201_CREATED
+    assert isinstance(clothing_response.data, list)
+    assert len(clothing_response.data) == len(clothing_data_list)
+
+    shoe_product_ids = [product_response['id'] for product_response in shoe_response.data]
+    clothing_product_ids = [product_response['id'] for product_response in clothing_response.data]
+    all_product_ids = shoe_product_ids + clothing_product_ids # Combine IDs from both types
 
     return {
-        "shoe_product_ids": product_ids # Return a list of product IDs
+        "shoe_product_ids": shoe_product_ids, # Return separate lists of IDs
+        "clothing_product_ids": clothing_product_ids,
+        "all_product_ids": all_product_ids # Still return combined for convenience if needed
     }
