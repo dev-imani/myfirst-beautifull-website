@@ -9,7 +9,7 @@ app_name = "products"
 router = routers.DefaultRouter()
 router.register(r"categories", CategoryViewSet, basename="categories")
 router.register(r"brands", BrandViewSet, basename="brands" )
-router.register(r'products', ProductViewSet, basename='product')
+router.register(r'products', ProductViewSet, basename='products')
 # Define URL patterns for the 'users' app
 urlpatterns = [
     path("", include(router.urls)),
