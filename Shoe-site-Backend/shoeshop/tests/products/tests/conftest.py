@@ -298,3 +298,89 @@ Returns:
         "token": inventory_m_token,
         "brand_id": response.data["id"],
     }
+    
+@pytest.fixture()
+def setup_products(setup_users, setup_category, setup_brand):
+    """
+    Fixture to set up products for testing.
+    """
+    client = setup_users["client"]
+    brand = setup_brand["brand_id"]
+    inventory_m_token = setup_users["inventory_manager_token"]
+    mens_id = setup_category["mens_id"]
+    womens_id = setup_category["womens_id"]
+    product_data_list = [
+        {
+            "name": "Running Shoe Mens Bulk",
+            "description": "Men's shoe for bulk running",
+            "brand": brand,
+            "category": mens_id,
+            "stock": 25,
+            "price": 99.99,
+            "gender": "mens",
+            "material": "leather",
+            "size_type": "US",
+            "style": "Casual",
+            "sizes": [
+                {"size": "42"},
+                {"size": "43"}
+            ],
+            "colors": [
+                {"color": "red"},
+                {"color": "blue"}
+            ],
+            "variants": [
+                {"size": "42", "color": "red", "stock": 10},
+                {"size": "43", "color": "blue", "stock": 15}
+            ]
+        },
+        {
+            "name": "Running Shoe Womens Bulk",
+            "description": "Womens shoe for bulk running",
+            "brand": brand, # Use brand_id here
+            "category": womens_id, # Use womens_id here to create product in a different category
+            "stock": 30,
+            "price": 110.50,
+            "gender": "womens",
+            "material": "mesh",
+            "size_type": "EU",
+            "style": "Sporty",
+            "sizes": [
+                {"size": "38"},
+                {"size": "39"}
+            ],
+            "colors": [
+                {"color": "pink"},
+                {"color": "gray"}
+            ],
+            "variants": [
+                {"size": "38", "color": "pink", "stock": 12},
+                {"size": "39", "color": "gray", "stock": 18}
+            ]
+        },
+        # You can add more product dictionaries here if needed for more bulk creation
+    ]
+    from django.http import QueryDict
+
+    url = reverse("products:products-list")
+    query_params = QueryDict(mutable=True)
+    query_params['category'] = mens_id  # Or a relevant category, it might not be necessary for bulk create, adjust if needed by your API design
+    url_with_params = url + "?" + query_params.urlencode()
+
+    response = client.post(
+        url_with_params,
+        product_data_list, # Now post the list of product data
+        HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
+        format="json",
+    )
+
+    print(f"Response in conftest after bulk product creation: {response.data}")
+    assert response.status_code == status.HTTP_201_CREATED
+    assert isinstance(response.data, list) # Assert response data is a list
+    assert len(response.data) == len(product_data_list) # Assert number of created products matches input
+
+    product_ids = [product_response['id'] for product_response in response.data] # Extract product IDs from the list of responses
+
+    return {
+        "shoe_product_ids": product_ids # Return a list of product IDs
+    }
