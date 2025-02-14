@@ -15,11 +15,39 @@ from users.permissions import IsInventoryManager
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing Category objects.
+    A ViewSet for managing Category objects.
 
     Provides CRUD operations for categories and additional endpoints for hierarchy navigation.
     The default GET operations return only active categories. Use a query parameter
-    (e.g. is_active=false) to retrieve inactive or all categories.
+    (e.g., ?is_active=false) to retrieve inactive or all categories.
+
+    Attributes:
+        queryset (QuerySet): The queryset of Category objects.
+        serializer_class (Serializer): The serializer class used for serialization.
+        filter_backends (list): The list of filter backends used for filtering the queryset.
+        search_fields (list): The list of fields used for search filtering.
+        ordering_fields (list): The list of fields used for ordering.
+
+    Methods:
+        get_queryset(): Returns a filtered queryset based on query parameters.
+        get_serializer_class(): Returns the appropriate serializer class based on the action.
+        get_permissions(): Returns the appropriate permission classes based on the action.
+        update(request, *args, **kwargs): Updates a category instance.
+        hierarchy(request): Retrieves the category hierarchy starting from top-level categories.
+
+    Example:
+        >>> from rest_framework.test import APIClient
+        >>> client = APIClient()
+        >>> response = client.get('/categories/')
+        >>> print(response.json())
+        [{'id': 1, 'name': 'Root Category', ...}]
+
+    Note:
+        The `hierarchy` endpoint supports a `depth` query parameter to control the depth of the hierarchy.
+
+    See Also:
+        CategorySerializer: The serializer used for serializing Category objects.
+        CategoryCreateUpdateSerializer: The serializer used for creating
     """
     
     queryset = Category.objects.all().prefetch_related('children')
@@ -28,17 +56,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     
     def get_queryset(self):
-        """Returns a filtered queryset based on query parameters.
-        By default, only active categories are returned unless the query parameter 
+        """
+        Returns a filtered queryset based on query parameters.
+
+        By default, only active categories are returned unless the query parameter
         `is_active` is provided (e.g., ?is_active=false or ?is_active=all).
         Query Parameters:
-        - is_active (str, optional): Filter categories based on their active status. 
-          If not provided, only active categories are returned. If 'all', all categories 
-          are returned. If 'true' or 'false', categories are filtered based on the 
-          boolean value.
-        - parent_id (int, optional): Filter categories based on their parent ID.
+            - is_active (str, optional): Filter categories based on their active status.
+              If not provided, only active categories are returned. If 'all', all categories
+              are returned. If 'true' or 'false', categories are filtered based on the
+              boolean value.
+            - parent_id (int, optional): Filter categories based on their parent ID.
+
         Returns:
-        - QuerySet: A filtered queryset of categories.
+            QuerySet: A filtered queryset of categories.
         """
         queryset = super().get_queryset()
         
@@ -63,6 +94,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return CategorySerializer
 
     def get_permissions(self):
+        """
+        Returns the appropriate serializer class based on the action.
+
+        If the action is 'create', 'update', or 'partial_update', returns
+        CategoryCreateUpdateSerializer. Otherwise, returns CategorySerializer.
+
+        Returns:
+            Serializer: The appropriate serializer class.
+        """
+        
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [IsInventoryManager]
         else:
@@ -186,22 +227,30 @@ class BrandFilter(FilterSet):
         fields = ['name', 'popularity', 'created_at']
 
 class BrandViewSet(viewsets.ModelViewSet):
-    """BrandViewSet is a view set for handling CRUD operations on the Brand model.
+    """
+    A ViewSet for managing Brand objects.
+
+    Provides CRUD operations for brands.
 
     Attributes:
-        queryset (QuerySet): The set of Brand objects to operate on.
-        serializer_class (Serializer): The serializer class used to validate and serialize Brand objects.
-        permission_classes (list): The list of permission classes that determine access control.
+        queryset (QuerySet): The queryset of Brand objects.
+        serializer_class (Serializer): The serializer class used for serialization.
         filter_backends (list): The list of filter backends used for filtering the queryset.
         filterset_class (FilterSet): The filter set class used for filtering the queryset.
 
     Methods:
-        list(request, *args, **kwargs): Retrieve a list of Brand objects.
-        create(request, *args, **kwargs): Create a new Brand object.
-        retrieve(request, *args, **kwargs): Retrieve a specific Brand object by its ID.
-        update(request, *args, **kwargs): Update a specific Brand object by its ID.
-        partial_update(request, *args, **kwargs): Partially update a specific Brand object by its ID.
-        destroy(request, *args, **kwargs): Delete a specific Brand object by its ID.
+        get_permissions(): Returns the appropriate permission classes based on the action.
+
+    Example:
+        >>> from rest_framework.test import APIClient
+        >>> client = APIClient()
+        >>> response = client.get('/brands/')
+        >>> print(response.json())
+        [{'id': 1, 'name': 'Test Brand', ...}]
+
+    See Also:
+        BrandSerializer: The serializer used for serializing Brand objects.
+        BrandFilter: The filter set used for filtering Brand objects.
     """
     queryset = Brand.objects.all() # pylint: disable=no-member
     serializer_class = BrandSerializer
@@ -218,6 +267,44 @@ class BrandViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
     
 class ProductViewSet(viewsets.ModelViewSet):
+    """
+    A ViewSet for managing Product objects.
+
+    Provides CRUD operations for products and additional endpoints for managing product variants and inventory.
+
+    Attributes:
+        permission_classes (list): The list of permission classes used for access control.
+
+    Methods:
+        get_permissions(): Returns the appropriate permission classes based on the action.
+        get_queryset(): Returns a filtered queryset based on query parameters.
+        get_serializer_class(): Returns the appropriate serializer class based on the action.
+        get_serializer_context(): Returns the serializer context.
+        create(request, *args, **kwargs): Creates a new product instance.
+        update(request, *args, **kwargs): Updates a product instance.
+        variants(request, pk=None): Retrieves all variants for a specific product.
+        inventory(request, pk=None): Retrieves detailed inventory information for a product.
+        update_stock(request, pk=None): Updates stock levels for product variants.
+
+    Example:
+        >>> from rest_framework.test import APIClient
+        >>> client = APIClient()
+        >>> response = client.get('/products/?category=1')
+        >>> print(response.json())
+        [{'id': 1, 'name': 'Test Product', ...}]
+
+    Note:
+        The `create` and `update` methods support bulk operations.
+        The `get_queryset` method expects either a `category` query parameter or a `pk` in the URL.
+
+    See Also:
+        BaseProductSerializer: The serializer used for serializing BaseProduct objects.
+        ShoeProductSerializer: The serializer used for serializing ShoeProduct objects.
+        ClothingProductSerializer: The serializer used for serializing ClothingProduct objects.
+        ShoeVariantSerializer: The serializer used for serializing ShoeVariant objects.
+        ClothingVariantSerializer: The serializer used for serializing ClothingVariant objects.
+    """
+    
     permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_permissions(self):
@@ -320,6 +407,30 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """
+        Creates a new product instance.
+
+        Supports bulk creation if the request data is a list.
+
+        Request Body:
+            - name (str): The name of the product.
+            - description (str): The description of the product.
+            - price (float): The price of the product.
+            - brand (int): The ID of the brand.
+            - category (int): The ID of the category.
+            - sizes (list): A list of sizes for the product (ShoeProduct only).
+            - colors (list): A list of colors for the product (ShoeProduct only).
+            - variants (list): A list of variants for the product.
+            - images (list): A list of images for the product.
+
+        Returns:
+            Response: The created product instance(s).
+
+        Raises:
+            ValidationError: If the request data is invalid.
+            Exception: If an unexpected error occurs.
+        """
+        
         try:
             is_many = isinstance(request.data, list) # Check if request.data is a list
 
@@ -349,6 +460,28 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer.save()
     @transaction.atomic
     def update(self, request, *args, **kwargs):
+        """
+        Updates a product instance.
+
+        Request Body:
+            - name (str): The name of the product.
+            - description (str): The description of the product.
+            - price (float): The price of the product.
+            - brand (int): The ID of the brand.
+            - category (int): The ID of the category.
+            - sizes (list): A list of sizes for the product (ShoeProduct only).
+            - colors (list): A list of colors for the product (ShoeProduct only).
+            - variants (list): A list of variants for the product.
+            - images (list): A list of images for the product.
+
+        Returns:
+            Response: The updated product instance.
+
+        Raises:
+            ValidationError: If the request data is invalid.
+            Exception: If an unexpected error occurs.
+        """
+        
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
@@ -373,7 +506,18 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def variants(self, request, pk=None):
-        """Get all variants for a specific product."""
+        """
+        Retrieves all variants for a specific product.
+
+        URL Parameters:
+            - pk (int): The primary key of the product.
+
+        Returns:
+            Response: The product variants.
+
+        Raises:
+            NotFound: If the product is not found.
+        """        
         product = self.get_object()
         
         if isinstance(product, ShoeProduct):
@@ -392,7 +536,18 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def inventory(self, request, pk=None):
-        """Get detailed inventory information for a product."""
+        """
+        Retrieves detailed inventory information for a product.
+
+        URL Parameters:
+            - pk (int): The primary key of the product.
+
+        Returns:
+            Response: The product inventory information.
+
+        Raises:
+            NotFound: If the product is not found.
+        """
         product = self.get_object()
         
         variants_data = []
@@ -425,7 +580,22 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def update_stock(self, request, pk=None):
-        """Update stock levels for product variants."""
+        """
+        Updates stock levels for product variants.
+
+        URL Parameters:
+            - pk (int): The primary key of the product.
+
+        Request Body:
+            - variants (list): A list of variant data containing 'variant_id' and 'stock'.
+
+        Returns:
+            Response: The updated stock levels.
+
+        Raises:
+            ValidationError: If the request data is invalid.
+            Exception: If an unexpected error occurs.
+        """
         try:
             product = self.get_object()
             variants_data = request.data.get('variants', [])
