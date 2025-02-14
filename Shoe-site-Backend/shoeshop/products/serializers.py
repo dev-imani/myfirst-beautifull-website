@@ -482,7 +482,6 @@ class ClothingProductSerializer(BaseProductSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        print("ClothingProductSerializer.create CALLED")
         variants_data = validated_data.pop('variants', [])
         images_data = validated_data.pop('images', [])
 
