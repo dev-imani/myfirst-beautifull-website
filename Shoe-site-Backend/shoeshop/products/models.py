@@ -383,7 +383,7 @@ class ShoeVariant(models.Model):
 
     def clean(self):
         if self.stock < 0:
-            raise ValidationError({"stock": _("Stock cannot be negative.")})
+            raise ValidationError({"stock": ("Stock cannot be negative.")})
        
 
     def __str__(self):
@@ -406,9 +406,10 @@ class ClothingProduct(BaseProduct):
 
     def clean(self):
         super().clean()
-        if not self.category.name.lower() == "clothing":
-            raise ValidationError({"category": _("Clothing products must belong to the Clothing category.")})
-
+        root_category = self.category.get_root()  # Get the root node (MPTT)
+        if not root_category.is_root_node() or root_category.name.lower() != "clothing": # Check if it is a root node and the name is correct
+            raise ValidationError({"category": ("clothing products must belong to the Clothing category.")})
+        
 class ClothingVariant(models.Model):
     """Represents a size variation of a clothing product."""
     product = models.ForeignKey(ClothingProduct, on_delete=models.CASCADE, related_name="variants")
@@ -420,7 +421,7 @@ class ClothingVariant(models.Model):
 
     def clean(self):
         if self.stock < 0:
-            raise ValidationError({"stock": _("Stock cannot be negative.")})
+            raise ValidationError({"stock": ("Stock cannot be negative.")})
 
     def __str__(self):
         return f"{self.product.name} - Size {self.size}"
