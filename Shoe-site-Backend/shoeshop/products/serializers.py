@@ -355,15 +355,11 @@ class ShoeProductSerializer(BaseProductSerializer):
         try:
             # Process sizes and colors first
             sizes, colors = self._process_sizes_and_colors(sizes_data, colors_data)
-            print(sizes)
-            print(colors)
-            print("saving the product with  data: ", validated_data)
             # Create the base product without M2M fields first
             product = ShoeProduct.objects.create(**validated_data)
-            print("product saved")
+            
             # Now that product has an ID, set M2M relationships
             if sizes:
-                print("setting sizes")
                 product.sizes.set(sizes)
             if colors:
                 product.colors.set(colors)
@@ -476,14 +472,17 @@ class ClothingProductSerializer(BaseProductSerializer):
     def validate(self, data):
         data = super().validate(data)
         category = data.get('category')
-        if category and category.get_root().name.lower() != "clothing":
+        root_name = category.get_root().name.lower()
+        
+        if category and root_name != "clothing":
             raise ValidationError(
-                {"category": "Clothing products must belong to the Clothing category."}
+                {"category": f"Clothing products must belong to the Clothing category. Got '{root_name}' instead."}
             )
         return data
 
     @transaction.atomic
     def create(self, validated_data):
+        print("ClothingProductSerializer.create CALLED")
         variants_data = validated_data.pop('variants', [])
         images_data = validated_data.pop('images', [])
 
