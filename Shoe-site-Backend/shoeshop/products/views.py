@@ -11,7 +11,6 @@ from rest_framework.exceptions import ValidationError, NotFound, ParseError
 from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 from products.choices import CategoryStatusChoices
 from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ShoeProductSerializer, ShoeVariantSerializer
-from products.product_mapper import ProductMapper
 from users.permissions import IsInventoryManager
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -337,7 +336,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         except ValidationError as e:
             return Response(
-                {"validation_error": e.detail if isinstance(e.detail, dict) else str(e)}, # Handle validation errors (now potentially a dict for bulk)
+                {"validation_error": e.detail if isinstance(e.detail, dict) else str(e)}, # Handle validation errors (potentially a dict for bulk)
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
