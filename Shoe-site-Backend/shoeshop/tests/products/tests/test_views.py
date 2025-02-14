@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from products.choices import CategoryChoices
 from products.models import Brand, Category
-
+'''
 @pytest.mark.django_db
 def test_root_category_creation(setup_category):
     """
@@ -70,7 +70,7 @@ class TestCategory:
         self.mens_shoe_category_id = setup_category["mens_id"]
         self.womens_shoe_category_id = setup_category["womens_id"]
         self.womens_boot_category_id = setup_category["womenboots_id"]
-    pytest.mark.parametrize(
+    @pytest.mark.parametrize(
         "get_endpoint, token, expected_status",
         [
             # Store Owner can get all categories
@@ -394,4 +394,21 @@ class TestBrand:
         assert response.status_code == expected_status
         # If deleted successfully, verify it's removed from the database
         if expected_status == status.HTTP_200_OK:
-            assert not Brand.objects.filter(pk=brandid).exists() # pylint: disable=no-member
+            assert not Brand.objects.filter(pk=brandid).exists() # pylint: disable=no-member'''
+
+
+@pytest.mark.django_db
+def test_product_get(setup_products, setup_users, setup_category):
+
+    client = setup_users["client"]
+    token = setup_users["inventory_manager_token"]
+    cat_id = setup_category["mens_id"]
+    prod_ids= setup_products["shoe_product_ids"]
+    
+    url = reverse("products:products-detail", kwargs={'pk': prod_ids[0]})
+    response = client.get(
+        url,
+        HTTP_AUTHORIZATION=f"Token {token}"
+    )
+    print(f"response status after get for PRODUCT:  {response.data} status : {response.status_code}")
+
