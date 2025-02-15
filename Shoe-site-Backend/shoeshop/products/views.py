@@ -313,63 +313,64 @@ class ProductViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [IsAuthenticatedOrReadOnly]
         return [permission() for permission in permission_classes]
-
     def get_queryset(self):
+        """
+        Dynamically fetches the correct product model based on `prod_type` (if querying by `pk`)
+        or category-based inference.
+
+        This method supports two main query types:
+        1. Fetch by primary key (`pk`), which requires specifying the product type (`prod_type`).
+        2. Fetch by category, which infers the product type based on the category's root.
+
+        Args:
+            self: The view instance.
+
+        Returns:
+            QuerySet: A Django QuerySet containing the filtered product objects.
+
+        Raises:
+            ParseError: If the query parameters are invalid or missing required fields.
+            NotFound: If the specified category does not exist.
+        """
+        # Extract query parameters
         pk = self.kwargs.get('pk')
         category_id = self.request.query_params.get('category')
+        prod_type = self.request.query_params.get('prod_type')  # Only needed for `pk` queries
 
-        base_qs = None
+        # Define product models with their respective prefetch and select related fields
+        product_models = {
+            "shoes": ShoeProduct.objects.prefetch_related(
+                'images', 'sizes', 'colors',
+                Prefetch('variants', queryset=ShoeVariant.objects.all())
+            ).select_related('brand', 'category'),
+            
+            "clothing": ClothingProduct.objects.prefetch_related(
+                'images',
+                Prefetch('variants', queryset=ClothingVariant.objects.all())
+            ).select_related('brand', 'category'),
+        }
+
+        # Fetch by ID (requires prod_type)
         if pk:
-            # Try to find the product in both models with optimized queries
-            try:
-                shoe_qs = ShoeProduct.objects.filter(pk=pk).prefetch_related(
-                    'images',
-                    'sizes',
-                    'colors',
-                    Prefetch('variants', queryset=ShoeVariant.objects.all())
-                ).select_related('brand', 'category')
-                
-                if shoe_qs.exists():
-                    base_qs = shoe_qs
-                else:
-                    clothing_qs = ClothingProduct.objects.filter(pk=pk).prefetch_related(
-                        'images',
-                        Prefetch('variants', queryset=ClothingVariant.objects.all())
-                    ).select_related('brand', 'category')
-                    
-                    if clothing_qs.exists():
-                        base_qs = clothing_qs
-                    else:
-                        raise NotFound("Product not found")
-            except Exception as e:
-                raise NotFound(f"Error finding product: {str(e)}")
+            if not prod_type or prod_type not in product_models:
+                raise ParseError("Missing or invalid 'prod_type' when querying by 'pk'.")
+            return product_models[prod_type].filter(pk=pk)
 
-        elif category_id:
+        # Fetch by Category (infer type dynamically)
+        if category_id:
             try:
                 category = Category.objects.get(pk=category_id)
-                root_category = category.get_root()
-                
-                if root_category.name.lower() == "shoes":
-                    base_qs = ShoeProduct.objects.filter(category=category)
-                elif root_category.name.lower() == "clothing":
-                    base_qs = ClothingProduct.objects.filter(category=category)
-                else:
-                    raise ParseError(" Invalid category type")
-                    
-                base_qs = base_qs.prefetch_related(
-                    'images',
-                    'variants'
-                ).select_related('brand', 'category')
-                
-            except Category.DoesNotExist:
-                raise NotFound("Category not found")
-        else:
-            raise ParseError("Either 'category' or 'pk' parameter is required")
+                root_category = category.get_root().name.lower()
 
-        return base_qs.annotate(
-            total_stock=Sum('variants__stock')
-        )
-        
+                if root_category in product_models:
+                    return product_models[root_category].filter(category=category)
+                else:
+                    raise ParseError("Unsupported category type.")
+            except Category.DoesNotExist:
+                raise NotFound("Category not found.")
+
+        # If neither `pk` nor `category` is provided
+        raise ParseError("Either 'category' or 'pk' (with 'prod_type') is required.")
     def get_serializer_class(self):
         if self.action == 'retrieve' or self.kwargs.get('pk'):
             try:
