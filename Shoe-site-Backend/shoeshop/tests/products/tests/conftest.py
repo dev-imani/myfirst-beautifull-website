@@ -316,7 +316,7 @@ def setup_category(setup_users):
         pytest.fail("Category 'Women\'s Clothing' creation failed in fixture")
     womens_clothing_category_id = womens_clothing_response.data["id"]
 
-
+    #
     return {
         "client": client,
         "token": token,
@@ -444,8 +444,7 @@ def setup_products(setup_users, setup_category, setup_brand):
             "name": "Jeans Womens Bulk",
             "description": "Womens jeans for everyday wear in bulk",
             "brand": brand_id,
-            "category": womenscloth_id, # Using womens_id for clothing
-            "stock": 40,
+            "category": womenscloth_id,
             "price": 59.50,
             "material": "denim",
             "color": "blue",
@@ -495,10 +494,9 @@ def setup_products(setup_users, setup_category, setup_brand):
 
     shoe_product_ids = [product_response['id'] for product_response in shoe_response.data]
     clothing_product_ids = [product_response['id'] for product_response in clothing_response.data]
-    all_product_ids = shoe_product_ids + clothing_product_ids # Combine IDs from both types
-
+    
     return {
         "shoe_product_ids": shoe_product_ids, # Return separate lists of IDs
         "clothing_product_ids": clothing_product_ids,
-        "all_product_ids": all_product_ids # Still return combined for convenience if needed
+        "all_product_ids": [shoe_product_ids, clothing_product_ids] # Still return combined for convenience if needed
     }

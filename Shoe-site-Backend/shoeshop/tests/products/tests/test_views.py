@@ -403,12 +403,134 @@ def test_product_get(setup_products, setup_users, setup_category):
     client = setup_users["client"]
     token = setup_users["inventory_manager_token"]
     cat_id = setup_category["mens_id"]
-    prod_ids= setup_products["shoe_product_ids"]
-    
-    url = reverse("products:products-detail", kwargs={'pk': prod_ids[0]})
+    prod_ids= setup_products["clothing_product_ids"]
+    prod_type = "shoes"
+    url = reverse("products:products-detail", kwargs={"pk": prod_ids[0]}) + f"?prod_type={prod_type}"
     response = client.get(
         url,
         HTTP_AUTHORIZATION=f"Token {token}"
     )
     print(f"response status after get for PRODUCT:  {response.data} status : {response.status_code}")
 
+@pytest.mark.django_db
+class TestProduct:
+    """Test suite for the product API views."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, setup_users, setup_products, setup_category):
+        """Set up data for tests."""
+        self.client = setup_users["client"]
+        self.store_user_token = setup_users["store_user_token"]
+        self.store_owner_token = setup_users["store_owner_token"]
+        self.store_manager_token = setup_users["store_manager_token"]
+        self.inventory_manager_token = setup_users["inventory_manager_token"]
+        self.sales_associate_token = setup_users["sales_associate_token"]
+        self.customer_service_token = setup_users["customer_service_token"]
+
+        # Get at least one product ID from each category
+        self.shoe_product_id = setup_products["shoe_product_ids"][0]
+        self.clothing_product_id = setup_products["clothing_product_ids"][0]
+
+        # Get category IDs
+        self.menshoecategory_id = setup_category["mens_id"]
+        self.womenclothingcategory_id = setup_category["womens_clothing_id"]
+
+    '''@pytest.mark.parametrize(
+        "url, token, category_id, expected_status",
+        [
+            # Store Owner should fetch products from both categories
+            ("products-list", "store_owner_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "store_owner_token", "womenclothingcategory_id", status.HTTP_200_OK),
+
+            # Store Manager should also fetch products
+            ("products-list", "store_manager_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "store_manager_token", "womenclothingcategory_id", status.HTTP_200_OK),
+
+            # Inventory Manager
+            ("products-list", "inventory_manager_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "inventory_manager_token", "womenclothingcategory_id", status.HTTP_200_OK),
+
+            # Sales Associate
+            ("products-list", "sales_associate_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "sales_associate_token", "womenclothingcategory_id", status.HTTP_200_OK),
+
+            # Customer Service
+            ("products-list", "customer_service_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "customer_service_token", "womenclothingcategory_id", status.HTTP_200_OK),
+
+            # Store User
+            ("products-list", "store_user_token", "menshoecategory_id", status.HTTP_200_OK),
+            ("products-list", "store_user_token", "womenclothingcategory_id", status.HTTP_200_OK),
+        ],
+    )
+    def test_get_products(self, url, token, category_id, expected_status):
+        """Test retrieving products and print detailed debug info."""
+        token = getattr(self, token)  # Get the actual token
+        category_id = getattr(self, category_id)  # Get the actual category ID
+
+        print("\n" + "=" * 60)  # Separator for readability
+        print(f"📌 TEST CASE: {url} | Category ID: {category_id}")
+        print(f"🔑 Token Used: {token[:10]}... (truncated for security)")
+        print("-" * 60)
+
+        # Make the GET request
+        response = self.client.get(
+            reverse(f"products:{url}") + f"?category={category_id}",
+            HTTP_AUTHORIZATION=f"Token {token}",
+        )
+
+        # Print response details
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}\n")
+
+        # Print Response Data (if necessary)
+        if response.status_code == status.HTTP_200_OK:
+            print("📦 Response Data Sample:", response.data[:3])  # Show first 3 items (if list)
+            print(f"🔢 Total Items Received: {len(response.data)}\n")
+        else:
+            print("⚠️ Response Error:", response.data, "\n")
+
+        print("=" * 60 + "\n")  # End of test separator
+
+        assert response.status_code == expected_status'''
+        
+    @pytest.mark.parametrize(
+        "token_attr, product_attr, prod_type, expected_status",
+        [
+            ("inventory_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("inventory_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_owner_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_owner_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("sales_associate_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("sales_associate_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("customer_service_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("customer_service_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_user_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_user_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+        ],
+    )
+    def test_get_product_details(self, token_attr, product_attr, prod_type, expected_status):
+        """Test retrieving a single product's details."""
+        token = getattr(self, token_attr)  # Get the actual token
+        product_id = getattr(self, product_attr)  # Get the actual product ID
+
+        # Construct the URL with prod_type
+        url = reverse("products:products-detail", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
+        response = self.client.get(
+            url,
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+
+        print("+" * 100)
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}")
+        print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
+
+        assert response.status_code == expected_status
