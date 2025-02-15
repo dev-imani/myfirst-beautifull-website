@@ -274,6 +274,9 @@ class BaseProduct(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     images = models.ManyToManyField(ProductImage, related_name="%(class)s_products" , blank=True) # Many-to-many to images
 
+    # New field: Automatically set to the root category name in lowercase
+    prod_type = models.CharField(max_length=50, editable=False, blank=True)
+
     class Meta:
         """
         Meta options for the model.
@@ -313,6 +316,10 @@ class BaseProduct(models.Model):
         validate_base_product_status(self.status)
         if not self.sku:
             self.sku = self.generate_sku()
+            
+        if self.category:
+            self.prod_type = self.category.get_root().name.lower()
+        
         if not self.category.parent: # pylint: disable=no-member
             raise ValidationError({"category": "Products cannot be assigned to top-level categories."})
          # Only check images if the instance is saved (has a PK)
