@@ -58,16 +58,16 @@ class CategorySerializer(serializers.ModelSerializer):
             - If the depth is greater than 1, includes children recursively, decreasing the depth by 1 for each level.
         """
         current_depth = self.context.get("depth", None)
-    
+        
         # If depth is 0, return empty children list
         if current_depth == 0:
             return []
-            
+        
         # If depth is None, return all descendants
         if current_depth is None:
             children = obj.get_descendants().order_by('order')
             return CategorySerializer(children, many=True, context=self.context).data
-            
+        
         # Get only immediate children for depth=1
         if current_depth == 1:
             children = obj.get_children().order_by('order')
@@ -78,7 +78,7 @@ class CategorySerializer(serializers.ModelSerializer):
                 context={**self.context, "depth": 0}  # Force children to have depth=0
             ).data
         
-        # For depth>1, get immediate children and recurse with depth-1
+        # For depth > 1, get immediate children and recurse with depth-1
         children = obj.get_children().order_by('order')
         if children:
             return CategorySerializer(
@@ -297,7 +297,7 @@ class BaseProductSerializer(serializers.ModelSerializer):
         model = None
         fields = [
             'id', 'name', 'description', 'price', 'brand', 'brand_name',
-            'category', 'category_name', 'sku', 'status', 'stock',
+            'prod_type', 'category', 'category_name', 'sku', 'status', 'stock',
             'images', 'created_at', 'updated_at', 'total_stock'
         ]
         read_only_fields = ['sku', 'created_at', 'updated_at', 'total_stock']
