@@ -3,12 +3,12 @@ import django_filters
 from django.db import transaction
 from django.db.models import Prefetch, Sum
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
-from rest_framework import viewsets, filters, status
+from rest_framework import viewsets, filters, status,serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import ValidationError, NotFound, ParseError
-from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
+from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ProductImage, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 from products.choices import CategoryStatusChoices
 from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ShoeProductSerializer, ShoeVariantSerializer
 from users.permissions import IsInventoryManager
@@ -333,44 +333,81 @@ class ProductViewSet(viewsets.ModelViewSet):
             NotFound: If the specified category does not exist.
         """
         # Extract query parameters
+       
         pk = self.kwargs.get('pk')
         category_id = self.request.query_params.get('category')
-        prod_type = self.request.query_params.get('prod_type')  # Only needed for `pk` queries
+        prod_type = self.request.query_params.get('prod_type')
 
-        # Define product models with their respective prefetch and select related fields
+        # Define optimized querysets
         product_models = {
-            "shoes": ShoeProduct.objects.prefetch_related(
-                'images', 'sizes', 'colors',
-                Prefetch('variants', queryset=ShoeVariant.objects.all())
-            ).select_related('brand', 'category'),
+            "shoes": ShoeProduct.objects.select_related(
+                'brand', 
+                'category'
+            ).prefetch_related(
+                Prefetch(
+                    'images',
+                    queryset=ProductImage.objects.only('id', 'image', 'alt_text')
+                ),
+                Prefetch(
+                    'sizes',
+                    queryset=ShoeSize.objects.only('id', 'size')
+                ),
+                Prefetch(
+                    'colors',
+                    queryset=ShoeColor.objects.only('id', 'color')
+                ),
+                Prefetch(
+                    'variants',
+                    queryset=ShoeVariant.objects.only(
+                        'id', 'product_id', 'size', 'color', 'stock'
+                    )
+                )
+            ),
             
-            "clothing": ClothingProduct.objects.prefetch_related(
-                'images',
-                Prefetch('variants', queryset=ClothingVariant.objects.all())
-            ).select_related('brand', 'category'),
+            "clothing": ClothingProduct.objects.select_related(
+                'brand',
+                'category'
+            ).prefetch_related(
+                Prefetch(
+                    'images',
+                    queryset=ProductImage.objects.only('id', 'image', 'alt_text')
+                ),
+                Prefetch(
+                    'variants',
+                    queryset=ClothingVariant.objects.only(
+                        'id', 'product_id', 'size', 'stock'
+                    )
+                )
+            )
         }
 
-        # Fetch by ID (requires prod_type)
         if pk:
             if not prod_type or prod_type not in product_models:
-                raise ParseError("Missing or invalid 'prod_type' when querying by 'pk'.")
+                raise ParseError(
+                    "Missing or invalid 'prod_type' when querying by 'pk'."
+                )
             return product_models[prod_type].filter(pk=pk)
 
-        # Fetch by Category (infer type dynamically)
         if category_id:
             try:
                 category = Category.objects.get(pk=category_id)
-                root_category = category.get_root().name.lower()
+                # Get all descendants including the current category
+                descendant_categories = category.get_descendants(include_self=True)
+                descendant_category_ids = [cat.id for cat in descendant_categories]
 
-                if root_category in product_models:
-                    return product_models[root_category].filter(category=category)
+                # Filter products based on the descendant categories
+                if category.get_root().name.lower() == "shoes":
+                    return product_models["shoes"].filter(category__in=descendant_category_ids)
+                elif category.get_root().name.lower() == "clothing":
+                    return product_models["clothing"].filter(category__in=descendant_category_ids)
                 else:
                     raise ParseError("Unsupported category type.")
             except Category.DoesNotExist:
                 raise NotFound("Category not found.")
 
-        # If neither `pk` nor `category` is provided
+
         raise ParseError("Either 'category' or 'pk' (with 'prod_type') is required.")
+
     def get_serializer_class(self):
         if self.action == 'retrieve' or self.kwargs.get('pk'):
             try:
@@ -381,26 +418,34 @@ class ProductViewSet(viewsets.ModelViewSet):
                     return ClothingProductSerializer
             except Exception:
                 raise NotFound("Product not found")
+            
+        # For creating a new product
+        creation_type = self.request.query_params.get('creation_type')
+        if creation_type:
+            if creation_type == "shoes":
+                return ShoeProductSerializer
+            elif creation_type == "clothing":
+                return ClothingProductSerializer
+            raise ParseError("Invalid 'creation_type' query parameter.")
 
+        # For listing products by category
         category_id = self.request.query_params.get('category')
         if category_id:
             try:
                 category = Category.objects.get(pk=category_id)
-                root_category = category.get_root()
+                root_category = category.get_root().name.lower()
                 
-                if root_category.name.lower() == "shoes":
+                if root_category == "shoes":
                     return ShoeProductSerializer
-                elif root_category.name.lower() == "clothing":
+                elif root_category == "clothing":
                     return ClothingProductSerializer
-                else:
-                    raise ParseError("Invalid category type")
+                raise ParseError("Invalid category type")
             except Category.DoesNotExist:
                 raise NotFound("Category not found")
         
-        raise ParseError("Either 'category' or 'pk' parameter is required")
+        raise ParseError("Either 'category', 'creation_type' or 'pk' parameter is required")
 
     def get_serializer_context(self):
-        """Add additional context to serializer."""
         context = super().get_serializer_context()
         if self.action in ['create', 'update', 'partial_update']:
             context['product'] = self.get_object() if self.kwargs.get('pk') else None
@@ -409,101 +454,92 @@ class ProductViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
-        Creates a new product instance.
-
-        Supports bulk creation if the request data is a list.
-
-        Request Body:
-            - name (str): The name of the product.
-            - description (str): The description of the product.
-            - price (float): The price of the product.
-            - brand (int): The ID of the brand.
-            - category (int): The ID of the category.
-            - sizes (list): A list of sizes for the product (ShoeProduct only).
-            - colors (list): A list of colors for the product (ShoeProduct only).
-            - variants (list): A list of variants for the product.
-            - images (list): A list of images for the product.
-
-        Returns:
-            Response: The created product instance(s).
-
-        Raises:
-            ValidationError: If the request data is invalid.
-            Exception: If an unexpected error occurs.
+        Creates new product instances.
+        Supports bulk creation of products of different types.
         """
+        query_creation_type = self.request.query_params.get('creation_type')
+        print("in viewsets and creation_type from query is+++++++++++", query_creation_type)
+
+        if not query_creation_type:
+            raise ParseError("The 'creation_type' query parameter is required.")
+
+        # For bulk creation, the creation_type in query params is optional 
+        # (will use individual product creation_types instead)
+        valid_creation_types = ['shoes', 'clothing']
         
-        try:
-            is_many = isinstance(request.data, list) # Check if request.data is a list
-
-            serializer = self.get_serializer(data=request.data, many=is_many) # Pass many=True if it's a list
+        # Handle both single item and list of items
+        data = request.data
+        is_many = isinstance(data, list)
+        
+        if not is_many:
+            # Single product - validate against query param
+            if query_creation_type not in valid_creation_types:
+                raise ValidationError({
+                    "creation_type": f"Invalid creation type. Allowed values are: {', '.join(valid_creation_types)}"
+                })
+                
+            data_creation_type = data.get('creation_type')
+            if data_creation_type and data_creation_type != query_creation_type:
+                raise ValidationError({
+                    "creation_type": "Creation type in query parameters does not match creation type in data"
+                })
+                
+            serializer_class = {
+                'shoes': ShoeProductSerializer,
+                'clothing': ClothingProductSerializer
+            }.get(query_creation_type)
+            print("in viewsets and data sent to serializers is" , data)
+            serializer = serializer_class(data=data)
             serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer) # Use perform_create for bulk create and single create to handle saving logic in one place.
-            headers = self.get_success_headers(serializer.data) # Get headers (might need adjustment for bulk)
+            product = serializer.save()
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        else:
+            # Bulk creation - handle multiple products
+            created_products = []
+            
+            for product_data in data:
+                creation_type = product_data.get('creation_type')
+                
+                if not creation_type:
+                    raise ValidationError({
+                        "creation_type": "Creation type is required for each product in bulk creation"
+                    })
+                    
+                if creation_type not in valid_creation_types:
+                    raise ValidationError({
+                        "creation_type": f"Invalid creation type '{creation_type}'. Allowed values are: {', '.join(valid_creation_types)}"
+                    })
+                    
+                serializer_class = {
+                    'shoes': ShoeProductSerializer,
+                    'clothing': ClothingProductSerializer
+                }.get(creation_type)
+                
+                serializer = serializer_class(data=product_data)
+                serializer.is_valid(raise_exception=True)
+                product = serializer.save()
+                created_products.append(serializer.data)
+            
+            return Response(created_products, status=status.HTTP_201_CREATED)
 
-            if is_many:
-                return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers) # Return list of created data for bulk
-            else:
-                 return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers) # Return single data for single create
-
-
-        except ValidationError as e:
-            return Response(
-                {"validation_error": e.detail if isinstance(e.detail, dict) else str(e)}, # Handle validation errors (potentially a dict for bulk)
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def perform_create(self, serializer): # Centralized saving logic
-        serializer.save()
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
         Updates a product instance.
-
-        Request Body:
-            - name (str): The name of the product.
-            - description (str): The description of the product.
-            - price (float): The price of the product.
-            - brand (int): The ID of the brand.
-            - category (int): The ID of the category.
-            - sizes (list): A list of sizes for the product (ShoeProduct only).
-            - colors (list): A list of colors for the product (ShoeProduct only).
-            - variants (list): A list of variants for the product.
-            - images (list): A list of images for the product.
-
-        Returns:
-            Response: The updated product instance.
-
-        Raises:
-            ValidationError: If the request data is invalid.
-            Exception: If an unexpected error occurs.
         """
-        
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
-            serializer = self.get_serializer(
-                instance, 
-                data=request.data, 
-                partial=partial
-            )
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
-            product = serializer.save()
+            serializer.save()
             return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"validation_error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        except serializers.ValidationError as e:
+            return Response({"validation_error": e.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'])
     def variants(self, request, pk=None):
