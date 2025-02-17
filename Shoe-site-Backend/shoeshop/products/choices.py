@@ -3,7 +3,7 @@ class CategoryChoices(models.TextChoices):
     """Enumeration of standard product categories."""
     SHOES = 'shoes', 'Shoes'
     CLOTHING = 'clothing', 'Clothing'
-    ACCESSORIES = 'accessories', 'Accessories'
+    """ACCESSORIES = 'accessories', 'Accessories'
     ELECTRONICS = 'electronics', 'Electronics'
     HOME = 'home', 'Home'
     TOYS = 'toys', 'Toys'
@@ -17,7 +17,7 @@ class CategoryChoices(models.TextChoices):
     GAMES = 'games', 'Games'
     ART = 'art', 'Art'
     COLLECTIBLES = 'collectibles', 'Collectibles'
-    OTHER = 'other', 'Other'
+    OTHER = 'other', 'Other' """
 
 class CategoryStatusChoices(models.TextChoices):
     """Category availability status."""
@@ -32,6 +32,9 @@ class BaseProductStatusChoices(models.TextChoices):
     INACTIVE = 'inactive', 'inactive'
     ARCHIVED = 'archived', 'Archived'
 
+class ProductTypeChoices(models.TextChoices):
+    SHOES = 'shoes', 'Shoes'
+    CLOTHING = 'clothing', 'Clothing'
 class ProductGenderChoices(models.TextChoices):
     """gender choices for  product."""
     MENS = 'mens', 'Mens'
