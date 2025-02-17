@@ -360,22 +360,22 @@ Fixture to set up a brand for testing.
     }
 
 from django.http import QueryDict
-
 @pytest.fixture()
 def setup_products(setup_users, setup_category, setup_brand):
     """
-    Fixture to set up ShoeProduct and ClothingProduct using separate requests
-    per category. Returns a dictionary containing lists of product IDs for each type.
+    Fixture to set up ShoeProduct and ClothingProduct using the `creation_type` query parameter.
+    Returns a dictionary containing lists of product IDs for each type.
     """
     client = setup_users["client"]
     brand_id = setup_brand["brand_id"]
     inventory_m_token = setup_users["inventory_manager_token"]
     mens_id = setup_category["mens_id"]
-    womens_id = setup_category["womens_id"]
     womenscloth_id = setup_category["womens_clothing_id"]
 
-    shoe_data_list = [
+    # Combined list of products with their creation_type
+    products_data_list = [
         {
+            "creation_type": "shoes",
             "name": "Running Shoe Mens Bulk",
             "description": "Men's shoe for bulk running",
             "brand": brand_id,
@@ -400,10 +400,11 @@ def setup_products(setup_users, setup_category, setup_brand):
             ]
         },
         {
+            "creation_type": "shoes",
             "name": "Another Running Shoe Mens Bulk",
             "description": "Another men's shoe for running in bulk",
             "brand": brand_id,
-            "category": mens_id, # Same mens_id for shoes
+            "category": mens_id,
             "stock": 20,
             "price": 120.00,
             "gender": "mens",
@@ -423,10 +424,8 @@ def setup_products(setup_users, setup_category, setup_brand):
                 {"size": "42", "color": "white", "stock": 12}
             ]
         },
-    ]
-
-    clothing_data_list = [
         {
+            "creation_type": "clothing",
             "name": "TShirt Womens Bulk",
             "description": "Womens t-shirt for casual wear in bulk",
             "brand": brand_id,
@@ -445,6 +444,7 @@ def setup_products(setup_users, setup_category, setup_brand):
             "description": "Womens jeans for everyday wear in bulk",
             "brand": brand_id,
             "category": womenscloth_id,
+            "creation_type": "clothing",
             "price": 59.50,
             "material": "denim",
             "color": "blue",
@@ -455,48 +455,34 @@ def setup_products(setup_users, setup_category, setup_brand):
         },
     ]
 
-    shoe_url = reverse("products:products-list")
-    shoe_query_params = QueryDict(mutable=True)
-    shoe_query_params['category'] = mens_id # Category for shoes
-    shoe_url_with_params = shoe_url + "?" + shoe_query_params.urlencode()
+    create_url = reverse("products:products-list")
 
-    clothing_url = reverse("products:products-list") # Same URL endpoint
-    clothing_query_params = QueryDict(mutable=True)
-    clothing_query_params['category'] = womenscloth_id # Category for clothing
-    clothing_url_with_params = clothing_url + "?" + clothing_query_params.urlencode()
+    # --- Make POST requests with creation_type ---
+    responses = []
+    for product_data in products_data_list:
+        creation_type = product_data["creation_type"] 
+        response = client.post(
+            create_url + f"?creation_type={creation_type}",
+            product_data,
+            HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
+            format="json",
+        )
+        print(f"Response in conftest after creating product: {response.data} status {response.status_code}")
+        responses.append(response)
 
-
-    # --- Make Separate POST requests ---
-    shoe_response = client.post(
-        shoe_url_with_params,
-        shoe_data_list,
-        HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
-        format="json",
-    )
-
-    clothing_response = client.post(
-        clothing_url_with_params,
-        clothing_data_list,
-        HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
-        format="json",
-    )
-
-    print(f"Shoe Create Response in conftest: {shoe_response.data}")
-    print(f"Clothing Create Response in conftest: {clothing_response.data}")
-
-    assert shoe_response.status_code == status.HTTP_201_CREATED
-    assert isinstance(shoe_response.data, list)
-    assert len(shoe_response.data) == len(shoe_data_list)
-
-    assert clothing_response.status_code == status.HTTP_201_CREATED
-    assert isinstance(clothing_response.data, list)
-    assert len(clothing_response.data) == len(clothing_data_list)
-
-    shoe_product_ids = [product_response['id'] for product_response in shoe_response.data]
-    clothing_product_ids = [product_response['id'] for product_response in clothing_response.data]
-    
+    # Collect product IDs
+    shoe_product_ids = []
+    clothing_product_ids = []
+    for response in responses:
+        assert response.status_code == status.HTTP_201_CREATED
+        product_id = response.data['id']
+        if response.data['creation_type'] == 'shoes':
+            shoe_product_ids.append(product_id)
+        elif response.data['creation_type'] == 'clothing':
+            clothing_product_ids.append(product_id)
+    print("in conftest and this are clothing ids", clothing_product_ids)
     return {
-        "shoe_product_ids": shoe_product_ids, # Return separate lists of IDs
+        "shoe_product_ids": shoe_product_ids,
         "clothing_product_ids": clothing_product_ids,
-        "all_product_ids": [shoe_product_ids, clothing_product_ids] # Still return combined for convenience if needed
+        "all_product_ids": shoe_product_ids + clothing_product_ids
     }
