@@ -292,15 +292,14 @@ class BaseProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
     total_stock = serializers.IntegerField(read_only=True)
-
     class Meta:
         model = None
         fields = [
-            'id', 'name', 'description', 'price', 'brand', 'brand_name',
+            'id', 'name', 'description', 'creation_type', 'price', 'brand', 'brand_name',
             'prod_type', 'category', 'category_name', 'sku', 'status', 'stock',
             'images', 'created_at', 'updated_at', 'total_stock'
         ]
-        read_only_fields = ['sku', 'created_at', 'updated_at', 'total_stock']
+        read_only_fields = ['sku', 'creation_type', 'created_at', 'updated_at', 'total_stock']
 
     def validate_price(self, value):
         if value <= 0:
@@ -327,6 +326,7 @@ class ShoeProductSerializer(BaseProductSerializer):
         fields = BaseProductSerializer.Meta.fields + [
             'gender', 'size_type', 'material', 'style', 'variants', 'sizes', 'colors'
         ]
+        
         
     def _process_sizes_and_colors(self, sizes_data, colors_data):
         sizes = []
@@ -356,7 +356,7 @@ class ShoeProductSerializer(BaseProductSerializer):
             # Process sizes and colors first
             sizes, colors = self._process_sizes_and_colors(sizes_data, colors_data)
             # Create the base product without M2M fields first
-            product = ShoeProduct.objects.create(**validated_data)
+            product = ShoeProduct.objects.create(**validated_data, creation_type="shoes")
             
             # Now that product has an ID, set M2M relationships
             if sizes:
@@ -468,7 +468,7 @@ class ClothingProductSerializer(BaseProductSerializer):
         fields = BaseProductSerializer.Meta.fields + [
             'material', 'color', 'variants'
         ]
-
+        
     def validate(self, data):
         data = super().validate(data)
         category = data.get('category')
@@ -486,7 +486,7 @@ class ClothingProductSerializer(BaseProductSerializer):
         images_data = validated_data.pop('images', [])
 
         # Create the product
-        product = ClothingProduct.objects.create(**validated_data)
+        product = ClothingProduct.objects.create(**validated_data, creation_type="clothing")
 
         # Create variants
         ClothingVariant.objects.bulk_create([

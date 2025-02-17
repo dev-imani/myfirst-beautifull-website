@@ -7,7 +7,7 @@ from django.db.models.functions import Lower
 from rest_framework.exceptions import ValidationError
 from products.utils import assign_category_order
 from products.validators import validate_base_product_status, validate_category_status, validate_name, validate_product_gender, validate_top_level_category, validate_description
-from products.choices import CategoryChoices, CategoryStatusChoices, BaseProductStatusChoices, ProductGenderChoices
+from products.choices import CategoryChoices, CategoryStatusChoices, BaseProductStatusChoices, ProductGenderChoices, ProductTypeChoices
 
 
 
@@ -275,8 +275,8 @@ class BaseProduct(models.Model):
     images = models.ManyToManyField(ProductImage, related_name="%(class)s_products" , blank=True) # Many-to-many to images
 
     # New field: Automatically set to the root category name in lowercase
-    prod_type = models.CharField(max_length=50, editable=False, blank=True)
-
+    prod_type = models.CharField(max_length=15, editable=False, blank=True)
+    creation_type = models.CharField(max_length=15, choices=ProductTypeChoices.choices, editable=False)
     class Meta:
         """
         Meta options for the model.
@@ -327,6 +327,7 @@ class BaseProduct(models.Model):
             raise ValidationError({"images": "Maximum 3 images allowed per product."})
         
     def save(self, *args, **kwargs):
+        print("SAVING A PRODUCT OF TYPE", self.creation_type)
         self.clean()
         super().save(*args, **kwargs)
 
