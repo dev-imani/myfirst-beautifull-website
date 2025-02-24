@@ -355,7 +355,7 @@ class ShoeProduct(BaseProduct):
 
         root_category = self.category.get_root()  # Get the root node (MPTT)
         if not root_category.is_root_node() or root_category.name.lower() != "shoes": # Check if it is a root node and the name is correct
-            raise ValidationError({"category": _("Shoe products must belong to the Shoes category.")})
+            raise ValidationError({"category": ("Shoe products must belong to the Shoes category.")})
         
 class ShoeSize(models.Model): # New model for sizes
     #product = models.ForeignKey(ShoeProduct, on_delete=models.CASCADE, related_name="sizes")
