@@ -29,7 +29,7 @@ def test_root_category_creation(setup_category):
     assert response.data["description"] == "All types of clothing"
     assert response.data["parent"] is None
 
-
+'''
 @pytest.mark.django_db
 def test_get_category(setup_category):
     """
@@ -48,7 +48,7 @@ def test_get_category(setup_category):
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["id"] == category_id #add assertion for the id
-'''
+
 @pytest.mark.django_db
 class TestCategory:
     """Test suite for the shoe shop category API views."""
@@ -70,7 +70,7 @@ class TestCategory:
         self.mens_shoe_category_id = setup_category["mens_id"]
         self.womens_shoe_category_id = setup_category["womens_id"]
         self.womens_boot_category_id = setup_category["womenboots_id"]
-    '''@pytest.mark.parametrize(
+    @pytest.mark.parametrize(
         "get_endpoint, token, expected_status",
         [
             # Store Owner can get all categories
@@ -115,7 +115,7 @@ class TestCategory:
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
 
-   
+    
     @pytest.mark.parametrize(
         "get_endpoint, category_id, token, expected_status",
         [
@@ -173,7 +173,7 @@ class TestCategory:
         )
         print(f"Response data: {response.data}")
         assert response.status_code == expected_status
- 
+    
     @pytest.mark.parametrize(
         "get_endpoint, category_id, token, expected_status",
         [
@@ -272,7 +272,7 @@ class TestCategory:
         if category_id == self.top_level_category_id:
             assert not Category.objects.filter(pk=self.top_level_category_id).exists()
             assert not Category.objects.filter(pk=self.mens_shoe_category_id).exists()
-    '''
+    
     @pytest.mark.parametrize("depth, expected_depth", [
     (0, 2),  # ✅ Returntop-level
     (1, 2),  # ✅ Return 1 level
@@ -285,11 +285,10 @@ class TestCategory:
         url = reverse("products:categories-hierarchy") + f"?depth={depth}"
 
         response = self.client.get(url, HTTP_AUTHORIZATION=f"Token {self.store_owner_token}")
-        print(f"response after get: {response.data}")
+        print(f"response after get: +++++++++++++++++ {response.data}")
         assert response.status_code == 200
         assert len(response.data) <= expected_depth  # Ensures max returned depth is within range
 
-'''
 @pytest.mark.django_db
 class TestBrand:
     """Test suite for the shoe shop brand API views."""
@@ -435,7 +434,7 @@ class TestProduct:
         self.menshoecategory_id = setup_category["mens_id"]
         self.womenclothingcategory_id = setup_category["womens_clothing_id"]
         self.shoe_product_id = setup_category["shoe_top_level_category_id"]
-    @pytest.mark.parametrize(
+    '''@pytest.mark.parametrize(
         "url, token, category_id, expected_status",
         [
             # Store Owner should fetch products from both categories
@@ -492,7 +491,7 @@ class TestProduct:
 
         print("=" * 60 + "\n")  # End of test separator
 
-        assert response.status_code == expected_status
+        assert response.status_code == expected_status'''
         
     @pytest.mark.parametrize(
         "token_attr, product_attr, prod_type, expected_status",
@@ -520,7 +519,7 @@ class TestProduct:
         """Test retrieving a single product's details."""
         token = getattr(self, token_attr)  # Get the actual token
         product_id = getattr(self, product_attr)  # Get the actual product ID
-
+        
         # Construct the URL with prod_type
         url = reverse("products:products-detail", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
         response = self.client.get(
@@ -533,4 +532,50 @@ class TestProduct:
         print(f"⬅️ Received Status: {response.status_code}")
         print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
 
-        assert response.status_code == expected_status'''
+        assert response.status_code == expected_status
+        
+    @pytest.mark.parametrize(
+        "token_attr, product_attr, prod_type, expected_status",
+        [
+            ("inventory_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("inventory_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_owner_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_owner_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("sales_associate_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("sales_associate_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+            
+            ("customer_service_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("customer_service_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+            
+            ("store_user_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("store_user_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+        ],
+    )
+    def test_product_update(self, token_attr, product_attr, prod_type,  expected_status):
+        "test for updating a product"
+        
+        token = getattr(self, token_attr)  # Get the actual token
+        product_id = getattr(self, product_attr)  # Get the actual product ID
+        
+        data = {
+            "name" : "updatedname"
+        }
+        url = reverse("products:products-detail", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
+       
+        response = self.client.patch(
+            url,
+            data,
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+
+        print("+" * 100)
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}")
+        print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
+
+        assert response.status_code == expected_status
