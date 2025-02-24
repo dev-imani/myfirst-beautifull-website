@@ -471,13 +471,24 @@ class ClothingProductSerializer(BaseProductSerializer):
         
     def validate(self, data):
         data = super().validate(data)
-        category = data.get('category')
-        root_name = category.get_root().name.lower()
-        
-        if category and root_name != "clothing":
-            raise ValidationError(
-                {"category": f"Clothing products must belong to the Clothing category. Got '{root_name}' instead."}
-            )
+         # If this is a partial update (PATCH), we need to combine with instance data
+        if self.instance:
+            category = data.get('category', self.instance.category)
+        else:
+            category = data.get('category')
+            
+        # Only validate category if it's being updated
+        if category:
+            root_name = category.get_root().name.lower()
+            if root_name != "clothing":
+                raise ValidationError(
+                    {"category": f"Clothing products must belong to the Clothing category. Got '{root_name}' instead."}
+                )
+                
+        # Only validate creation_type if it's being updated
+        if 'creation_type' in data and data['creation_type'] != 'clothing':
+            raise serializers.ValidationError("Invalid creation type for ClothingProduct")
+            
         return data
 
     @transaction.atomic
