@@ -467,7 +467,11 @@ def setup_products(setup_users, setup_category, setup_brand):
             HTTP_AUTHORIZATION=f"Token {inventory_m_token}",
             format="json",
         )
-        print(f"Response in conftest after creating product: {response.data} status {response.status_code}")
+        if response.status_code != status.HTTP_201_CREATED:
+            print(f"Error creating product : {product_data}")
+            print(f"\n\n\nResponse in conftest after creating product: {response.data} status {response.status_code}")
+            pytest.fail("Product creation failed in fixture")
+        
         responses.append(response)
 
     # Collect product IDs
