@@ -49,12 +49,15 @@ def validate_name(name):
     Raises:
         ValidationError: If the name contains invalid characters or is too short.
     """
-    if not re.match(r"^[A-Za-z0-9 \-'&]+$", name):  # Include ', -, &, and space
-        raise ValidationError(
-            "Name can only contain letters, numbers, spaces, hyphens, apostrophes, and ampersands."
-        )
-    if len(name) < 3:
-        raise ValidationError("Name must be at least 3 characters long.")
+    if name:
+        if not re.match(r"^[A-Za-z0-9 \-'&]+$", name):  # Include ', -, &, and space
+            raise ValidationError(
+                "Name can only contain letters, numbers, spaces, hyphens, apostrophes, and ampersands."
+            )
+        if len(name) < 3:
+            raise ValidationError("Name must be at least 3 characters long.")
+    else:
+        pass
 
 def validate_description(description):
     """
