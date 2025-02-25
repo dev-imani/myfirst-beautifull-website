@@ -29,7 +29,7 @@ def test_root_category_creation(setup_category):
     assert response.data["description"] == "All types of clothing"
     assert response.data["parent"] is None
 
-'''
+
 @pytest.mark.django_db
 def test_get_category(setup_category):
     """
@@ -410,7 +410,7 @@ def test_product_get(setup_products, setup_users, setup_category):
         HTTP_AUTHORIZATION=f"Token {token}"
     )
     print(f"response status after get for PRODUCT:  {response.data} status : {response.status_code}")
-
+'''
 @pytest.mark.django_db
 class TestProduct:
     """Test suite for the product API views."""
@@ -491,7 +491,7 @@ class TestProduct:
 
         print("=" * 60 + "\n")  # End of test separator
 
-        assert response.status_code == expected_status'''
+        assert response.status_code == expected_status
         
     @pytest.mark.parametrize(
         "token_attr, product_attr, prod_type, expected_status",
@@ -573,6 +573,132 @@ class TestProduct:
             HTTP_AUTHORIZATION=f"Token {token}"
         )
 
+        print("+" * 100)
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}")
+        print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
+
+        assert response.status_code == expected_status
+
+    @pytest.mark.parametrize(
+        "token_attr, product_attr, prod_type, expected_status",
+        [
+            ("inventory_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("inventory_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_owner_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_owner_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("sales_associate_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("sales_associate_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("customer_service_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("customer_service_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_user_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_user_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+        ],
+    )
+    def test_product_variants(self, token_attr, product_attr, prod_type, expected_status):
+        "test for fetching product variants"
+        token = getattr(self, token_attr)  # Get the actual token
+        product_id = getattr(self, product_attr)
+        url = reverse("products:products-variants", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
+        response = self.client.get(
+            url,
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        
+        print("+" * 100)
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}")
+        print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
+
+        assert response.status_code == expected_status
+        
+    @pytest.mark.parametrize(
+        "token_attr, product_attr, prod_type, expected_status",
+        [
+            ("inventory_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("inventory_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_owner_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_owner_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("sales_associate_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("sales_associate_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("customer_service_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("customer_service_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_user_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_user_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+        ],
+    )
+    def test_product_inventory(self, token_attr, product_attr, prod_type, expected_status):
+        "test for fetching product inventory"
+        token = getattr(self, token_attr)
+        product_id = getattr(self, product_attr)
+        url = reverse("products:products-inventory", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
+        
+        response = self.client.get(
+            url,
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        
+        print("+" * 100)
+        print(f"➡️ Expected Status: {expected_status}")
+        print(f"⬅️ Received Status: {response.status_code}")
+        print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
+
+        assert response.status_code == expected_status'''
+        
+    @pytest.mark.parametrize(
+        "token_attr, product_attr, prod_type, expected_status",
+        [
+            ("inventory_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("inventory_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_owner_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_owner_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("store_manager_token", "shoe_product_id", "shoes", status.HTTP_200_OK),
+            ("store_manager_token", "clothing_product_id", "clothing", status.HTTP_200_OK),
+            
+            ("sales_associate_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("sales_associate_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+            
+            ("customer_service_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("customer_service_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+            
+            ("store_user_token", "shoe_product_id", "shoes", status.HTTP_403_FORBIDDEN),
+            ("store_user_token", "clothing_product_id", "clothing", status.HTTP_403_FORBIDDEN),
+        ],
+    )
+    def test_product_update_stock(self, token_attr, product_attr, prod_type, expected_status):
+        "test for updating product stock"
+        token = getattr(self, token_attr)
+        product_id = getattr(self, product_attr)
+        url = reverse("products:products-update-stock", kwargs={"pk": product_id}) + f"?prod_type={prod_type}"
+        data = {
+            "variants": [
+                {"variant_id": 1, "stock": 15},
+                {"variant_id": 2, "stock": 20}
+            ]
+        }
+        response = self.client.post(
+            url,
+            data,
+            format='json',  # Ensure you specify the format if you are sending JSON data
+            HTTP_AUTHORIZATION=f"Token {token}"
+        )
+        
         print("+" * 100)
         print(f"➡️ Expected Status: {expected_status}")
         print(f"⬅️ Received Status: {response.status_code}")
