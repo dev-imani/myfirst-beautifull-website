@@ -28,7 +28,7 @@ def test_root_category_creation(setup_category):
     assert response.data["name"] == "Clothing"
     assert response.data["description"] == "All types of clothing"
     assert response.data["parent"] is None
-
+'''
 
 @pytest.mark.django_db
 def test_get_category(setup_category):
@@ -657,7 +657,7 @@ class TestProduct:
         print(f"⬅️ Received Status: {response.status_code}")
         print(f" ++++ \t+++  Response Data:  \n{response.data} ++++ \t+++\n")
 
-        assert response.status_code == expected_status'''
+        assert response.status_code == expected_status
         
     @pytest.mark.parametrize(
         "token_attr, product_attr, prod_type, expected_status",
