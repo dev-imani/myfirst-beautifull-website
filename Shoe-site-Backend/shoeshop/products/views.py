@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError, NotFound, ParseError
 from products.models import BaseProduct, Category, Brand, ClothingProduct, ClothingVariant, ProductImage, ShoeColor, ShoeProduct, ShoeSize, ShoeVariant
 from products.choices import CategoryStatusChoices
 from products.serializers import BaseProductSerializer, BrandSerializer, CategoryCreateUpdateSerializer, CategorySerializer, ClothingProductSerializer, ClothingVariantSerializer, ShoeProductSerializer, ShoeVariantSerializer
+from products.product_mapper import ProductMapper
 from users.permissions import IsInventoryManager
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -333,7 +334,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             NotFound: If the specified category does not exist.
         """
         # Extract query parameters
-       
         pk = self.kwargs.get('pk')
         category_id = self.request.query_params.get('category')
         prod_type = self.request.query_params.get('prod_type')
@@ -391,20 +391,18 @@ class ProductViewSet(viewsets.ModelViewSet):
         if category_id:
             try:
                 category = Category.objects.get(pk=category_id)
+                model = ProductMapper.get_model_for_category(category)
+                if not model:
+                    raise ParseError("Unsupported category type.")
+                
                 # Get all descendants including the current category
                 descendant_categories = category.get_descendants(include_self=True)
                 descendant_category_ids = [cat.id for cat in descendant_categories]
 
                 # Filter products based on the descendant categories
-                if category.get_root().name.lower() == "shoes":
-                    return product_models["shoes"].filter(category__in=descendant_category_ids)
-                elif category.get_root().name.lower() == "clothing":
-                    return product_models["clothing"].filter(category__in=descendant_category_ids)
-                else:
-                    raise ParseError("Unsupported category type.")
+                return model.objects.filter(category__in=descendant_category_ids)
             except Category.DoesNotExist:
                 raise NotFound("Category not found.")
-
 
         raise ParseError("Either 'category' or 'pk' (with 'prod_type') is required.")
 
@@ -422,24 +420,20 @@ class ProductViewSet(viewsets.ModelViewSet):
         # For creating a new product
         creation_type = self.request.query_params.get('creation_type')
         if creation_type:
-            if creation_type == "shoes":
-                return ShoeProductSerializer
-            elif creation_type == "clothing":
-                return ClothingProductSerializer
-            raise ParseError("Invalid 'creation_type' query parameter.")
+            serializer_class = ProductMapper.CATEGORY_TO_SERIALIZER.get(creation_type)
+            if not serializer_class:
+                raise ParseError("Invalid 'creation_type' query parameter.")
+            return serializer_class
 
         # For listing products by category
         category_id = self.request.query_params.get('category')
         if category_id:
             try:
                 category = Category.objects.get(pk=category_id)
-                root_category = category.get_root().name.lower()
-                
-                if root_category == "shoes":
-                    return ShoeProductSerializer
-                elif root_category == "clothing":
-                    return ClothingProductSerializer
-                raise ParseError("Invalid category type")
+                serializer_class = ProductMapper.get_serializer_for_category(category)
+                if not serializer_class:
+                    raise ParseError("Invalid category type")
+                return serializer_class
             except Category.DoesNotExist:
                 raise NotFound("Category not found")
         
@@ -484,10 +478,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                     "creation_type": "Creation type in query parameters does not match creation type in data"
                 })
                 
-            serializer_class = {
-                'shoes': ShoeProductSerializer,
-                'clothing': ClothingProductSerializer
-            }.get(query_creation_type)
+            serializer_class = ProductMapper.CATEGORY_TO_SERIALIZER.get(query_creation_type)
             print("in viewsets and data sent to serializers is" , data)
             serializer = serializer_class(data=data)
             serializer.is_valid(raise_exception=True)
@@ -512,10 +503,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                         "creation_type": f"Invalid creation type '{creation_type}'. Allowed values are: {', '.join(valid_creation_types)}"
                     })
                     
-                serializer_class = {
-                    'shoes': ShoeProductSerializer,
-                    'clothing': ClothingProductSerializer
-                }.get(creation_type)
+                serializer_class = ProductMapper.CATEGORY_TO_SERIALIZER.get(creation_type)
                 
                 serializer = serializer_class(data=product_data)
                 serializer.is_valid(raise_exception=True)
