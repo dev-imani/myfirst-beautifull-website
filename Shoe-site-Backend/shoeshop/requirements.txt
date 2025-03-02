@@ -8,6 +8,7 @@ defusedxml==0.8.0rc2
 Django==5.1.5
 django-cors-headers==4.6.0
 django-debug-toolbar==5.0.1
+django-filter==24.3
 django-js-asset==3.0.1
 django-mptt==0.16.0
 django-phonenumber-field==8.0.0
@@ -21,6 +22,7 @@ iniconfig==2.0.0
 oauthlib==3.2.2
 packaging==24.2
 phonenumberslite==8.13.53
+pillow==11.1.0
 pluggy==1.5.0
 pycparser==2.22
 PyJWT==2.10.1
